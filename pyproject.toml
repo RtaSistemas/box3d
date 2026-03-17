@@ -1,0 +1,51 @@
+[build-system]
+requires      = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name        = "box3d"
+version     = "2.0.0"
+description = "Arcade game 3D box art generator — plugin profiles, pure Pillow + NumPy"
+readme      = "README.md"
+license     = { text = "MIT" }
+requires-python = ">=3.11"
+keywords    = ["arcade", "retrogaming", "box-art", "image-processing", "pillow"]
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+]
+
+dependencies = [
+    "Pillow>=10.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+box3d = "cli.main:main"
+
+[project.urls]
+Homepage   = "https://github.com/YOUR_USERNAME/box3d"
+Repository = "https://github.com/YOUR_USERNAME/box3d"
+Issues     = "https://github.com/YOUR_USERNAME/box3d/issues"
+
+[tool.setuptools.packages.find]
+where  = ["."]
+include = ["core*", "engine*", "cli*"]
+
+[tool.pytest.ini_options]
+testpaths        = ["tests"]
+pythonpath       = ["."]
+python_files     = ["test_*.py"]
+python_classes   = ["Test*"]
+python_functions = ["test_*"]
+addopts          = "-v --tb=short"

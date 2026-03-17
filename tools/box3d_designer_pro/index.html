@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Box3D Designer Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/retro.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- HEADER                                                              -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <header id="header">
+    <div class="logo neon-text">BOX<span>3D</span> DESIGNER PRO</div>
+    <div class="version">v1.0.0</div>
+    <div class="sep"></div>
+
+    <label style="font-size:.75rem;color:var(--text-dim);margin-right:.25rem">Profile:</label>
+    <input id="profile-name-input" type="text" placeholder="untitled" value="untitled">
+
+    <div class="sep"></div>
+
+    <button class="btn" id="btn-load-template"
+            data-tip="Load a PNG template image" style="width:auto;margin:0;padding:.3rem .7rem">
+      ◈ Template
+    </button>
+    <button class="btn primary" id="btn-export-json"
+            style="width:auto;margin:0;padding:.3rem .7rem">
+      ↓ Export JSON
+    </button>
+
+    <div class="status-dot" id="status-dot"></div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="input-template" accept="image/*" style="display:none">
+    <input type="file" id="input-profile"  accept=".json"   style="display:none">
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- LEFT PANEL — Tools                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <aside id="panel-left">
+
+    <!-- Template -->
+    <div class="section open">
+      <div class="section-title">Template</div>
+      <div class="section-body">
+        <button class="btn" id="btn-load-template2">◈ Load Image</button>
+        <div id="template-info" style="font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);margin-top:.3rem">
+          No template loaded
+        </div>
+      </div>
+    </div>
+
+    <!-- Layout Objects -->
+    <div class="section open">
+      <div class="section-title">Layout Objects</div>
+      <div class="section-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.5rem">
+          <button class="btn" id="btn-add-spine"
+                  style="border-color:#ffd32a;color:#ffd32a">＋ Spine</button>
+          <button class="btn" id="btn-add-cover"
+                  style="border-color:#2ed573;color:#2ed573">＋ Cover</button>
+          <button class="btn" id="btn-add-logo"
+                  style="border-color:#ff4757;color:#ff4757">＋ Logo</button>
+          <button class="btn" id="btn-add-marquee"
+                  style="border-color:#00eaff;color:#00eaff">＋ Marquee</button>
+        </div>
+        <button class="btn danger" id="btn-remove">✕ Remove Selected</button>
+
+        <div style="margin-top:.6rem">
+          <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
+                      margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.1em">
+            Objects
+          </div>
+          <div id="obj-list" class="obj-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Profile I/O -->
+    <div class="section open">
+      <div class="section-title">Profile I/O</div>
+      <div class="section-body">
+        <button class="btn" id="btn-load-profile">↑ Load profile.json</button>
+        <button class="btn primary" id="btn-export-json2">↓ Export JSON</button>
+        <button class="btn" id="btn-export-py">↓ Export Python snippet</button>
+        <button class="btn" id="btn-copy-json">⧉ Copy JSON</button>
+      </div>
+    </div>
+
+    <!-- Profile Settings -->
+    <div class="section open">
+      <div class="section-title">Profile Settings</div>
+      <div class="section-body">
+        <div class="field">
+          <label>Spine source</label>
+          <select id="sel-spine-source">
+            <option value="left">left</option>
+            <option value="right">right</option>
+            <option value="center">center</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Cover fit</label>
+          <select id="sel-cover-fit">
+            <option value="stretch">stretch</option>
+            <option value="fit">fit</option>
+            <option value="crop">crop</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Source frac</label>
+          <input type="number" id="inp-source-frac" value="0.20" min="0.05" max="0.5" step="0.05" style="width:70px">
+        </div>
+        <div class="field">
+          <label>Logo alpha</label>
+          <input type="number" id="inp-logo-alpha" value="0.85" min="0" max="1" step="0.05" style="width:70px">
+        </div>
+        <div class="field">
+          <label>Rotate logos</label>
+          <input type="checkbox" id="cb-rotate-logos" checked>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid -->
+    <div class="section">
+      <div class="section-title">Grid &amp; Snap</div>
+      <div class="section-body">
+        <div class="field">
+          <label>Show grid</label>
+          <input type="checkbox" id="cb-show-grid" checked>
+        </div>
+        <div class="field">
+          <label>Snap to grid</label>
+          <input type="checkbox" id="cb-snap-grid" checked>
+        </div>
+        <div class="field">
+          <label>Grid size</label>
+          <input type="number" id="input-grid-size" value="10" min="1" max="100" style="width:60px">
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual -->
+    <div class="section">
+      <div class="section-title">Visual FX</div>
+      <div class="section-body">
+        <div class="field">
+          <label>Scanlines</label>
+          <input type="checkbox" id="cb-scanlines">
+        </div>
+        <div class="field">
+          <label>Zoom</label>
+          <span id="zoom-display" style="font-family:var(--font-mono);font-size:.78rem;color:var(--accent)">100%</span>
+        </div>
+        <div class="btn-row" style="margin-top:.4rem">
+          <button class="btn" id="btn-zoom-out">−</button>
+          <button class="btn" id="btn-zoom-fit">Fit</button>
+          <button class="btn" id="btn-zoom-in">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keyboard reference -->
+    <div class="section">
+      <div class="section-title">Keyboard</div>
+      <div class="section-body">
+        <table style="width:100%;font-family:var(--font-mono);font-size:.68rem;
+                      color:var(--text-dim);border-collapse:collapse;line-height:1.8">
+          <tr><td style="color:var(--accent)">↑↓←→</td><td>Move 1 px</td></tr>
+          <tr><td style="color:var(--accent)">⇧+Arrow</td><td>Move 10 px</td></tr>
+          <tr><td style="color:var(--accent)">Del</td><td>Remove</td></tr>
+          <tr><td style="color:var(--accent)">Drag</td><td>Move</td></tr>
+          <tr><td style="color:var(--accent)">Handle</td><td>Resize</td></tr>
+        </table>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CENTER — Canvas                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <main id="canvas-area">
+    <div id="canvas-wrap">
+      <canvas id="main-canvas" width="703" height="1000"></canvas>
+    </div>
+    <div id="canvas-hint">
+      Drag to move · Corner handles to resize · Drop template or profile.json here
+    </div>
+  </main>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- RIGHT PANEL — Properties                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <aside id="panel-right">
+
+    <div id="props-title">▸ SELECT AN OBJECT</div>
+
+    <!-- X Y W H -->
+    <div class="prop-grid">
+      <div class="prop-item">
+        <label>X</label>
+        <input type="number" id="prop-x" disabled placeholder="—">
+      </div>
+      <div class="prop-item">
+        <label>Y</label>
+        <input type="number" id="prop-y" disabled placeholder="—">
+      </div>
+      <div class="prop-item">
+        <label>Width</label>
+        <input type="number" id="prop-width" disabled placeholder="—">
+      </div>
+      <div class="prop-item">
+        <label>Height</label>
+        <input type="number" id="prop-height" disabled placeholder="—">
+      </div>
+    </div>
+
+    <!-- Spine layout slots (shown when spine is selected) -->
+    <div id="spine-slots" class="section" style="display:none">
+      <div class="section-title">Spine Logo Slots</div>
+      <div class="section-body">
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
+                    margin-bottom:.4rem;text-transform:uppercase">Game logo</div>
+        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="prop-item"><label>max_w</label><input type="number" id="sp-game-w" value="80"></div>
+          <div class="prop-item"><label>max_h</label><input type="number" id="sp-game-h" value="320"></div>
+          <div class="prop-item"><label>center_y</label><input type="number" id="sp-game-cy" value="453"></div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
+                    margin:.4rem 0;text-transform:uppercase">Top logo</div>
+        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="prop-item"><label>max_w</label><input type="number" id="sp-top-w" value="80"></div>
+          <div class="prop-item"><label>max_h</label><input type="number" id="sp-top-h" value="120"></div>
+          <div class="prop-item"><label>center_y</label><input type="number" id="sp-top-cy" value="150"></div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
+                    margin:.4rem 0;text-transform:uppercase">Bottom logo</div>
+        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="prop-item"><label>max_w</label><input type="number" id="sp-bot-w" value="80"></div>
+          <div class="prop-item"><label>max_h</label><input type="number" id="sp-bot-h" value="80"></div>
+          <div class="prop-item"><label>center_y</label><input type="number" id="sp-bot-cy" value="780"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cover quad (shown when cover is selected) -->
+    <div id="cover-quad-panel" class="section" style="display:none">
+      <div class="section-title">Cover Quad (perspective)</div>
+      <div class="section-body">
+        <div style="font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);
+                    line-height:1.7">
+          <div>TL → <span id="quad-tl" class="neon-text">—</span></div>
+          <div>TR → <span id="quad-tr" class="neon-text">—</span></div>
+          <div>BR → <span id="quad-br" class="neon-text">—</span></div>
+          <div>BL → <span id="quad-bl" class="neon-text">—</span></div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
+                    margin-top:.5rem">
+          Quad derived from bounding box.<br>Use profile.json to set exact warp corners.
+        </div>
+      </div>
+    </div>
+
+    <!-- JSON preview -->
+    <div class="section open" style="flex:1">
+      <div class="section-title">JSON Preview</div>
+      <div class="section-body" style="padding-bottom:0">
+        <pre id="json-preview">{}</pre>
+      </div>
+    </div>
+
+  </aside>
+
+</div><!-- #app -->
+
+<script type="module">
+import { CanvasEngine, COLORS }  from "./canvas.js";
+import { exportProfile, importProfile, exportPython, downloadFile } from "./profile.js";
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+const $  = id  => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
+
+// ── State ─────────────────────────────────────────────────────────────────
+let engine  = null;
+let tplImg  = null;
+let extras  = {};
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  engine = new CanvasEngine($("main-canvas"));
+  engine.on("select", onSelect);
+  engine.on("change", onObjectChange);
+  engine.on("zoom",   z => { $("zoom-display").textContent = Math.round(z * 100) + "%"; });
+
+  drawPlaceholder();
+  wireUI();
+  initSections();
+  refreshJson();
+  setTimeout(() => engine.fitToScreen($("canvas-area").clientWidth, $("canvas-area").clientHeight), 50);
+});
+
+function drawPlaceholder() {
+  const c = engine.el, ctx = c.getContext("2d");
+  c.width = 703; c.height = 1000;
+  ctx.fillStyle = "#12161e"; ctx.fillRect(0,0,c.width,c.height);
+  ctx.strokeStyle = "#1e2535"; ctx.lineWidth = 2;
+  ctx.strokeRect(2,2,c.width-4,c.height-4);
+  ctx.fillStyle = "#1e2535";
+  ctx.font = "bold 20px 'Share Tech Mono', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("Drop template PNG here", c.width/2, c.height/2 - 18);
+  ctx.font = "13px 'Share Tech Mono', monospace";
+  ctx.fillText("or click  ◈ Template", c.width/2, c.height/2 + 18);
+}
+
+// ── Load template ──────────────────────────────────────────────────────────
+function loadTemplate(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  const img = new Image();
+  img.onload = () => {
+    tplImg = img;
+    engine.setTemplate(img);
+    extras.tw = img.naturalWidth;
+    extras.th = img.naturalHeight;
+    $("template-info").textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
+    refreshJson(); toast("Template loaded");
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+// ── Load profile JSON ──────────────────────────────────────────────────────
+function loadProfileJSON(file) {
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const json = JSON.parse(e.target.result);
+      const { objects, extras: ex } = importProfile(json);
+      engine.objects  = objects;
+      engine.selected = null;
+      extras = ex;
+      if (json.name) $("profile-name-input").value = json.name;
+      syncSettingControls(ex);
+      syncSpineSlots(ex.spine_layout);
+      engine.redraw();
+      buildObjList();
+      onSelect(null);
+      refreshJson();
+      toast(`Profile "${json.name || "??"}" loaded`);
+    } catch (err) { toast("Invalid JSON: " + err.message, true); }
+  };
+  r.readAsText(file);
+}
+
+function syncSettingControls(ex) {
+  if ($("sel-spine-source") && ex.spine_source) $("sel-spine-source").value = ex.spine_source;
+  if ($("sel-cover-fit")    && ex.cover_fit)    $("sel-cover-fit").value    = ex.cover_fit;
+  if ($("inp-source-frac")  && ex.spine_source_frac != null)
+    $("inp-source-frac").value = ex.spine_source_frac;
+  if ($("inp-logo-alpha")   && ex.spine_layout?.logo_alpha != null)
+    $("inp-logo-alpha").value = ex.spine_layout.logo_alpha;
+  if ($("cb-rotate-logos")  && ex.spine_layout?.rotate_logos != null)
+    $("cb-rotate-logos").checked = ex.spine_layout.rotate_logos;
+}
+
+function syncSpineSlots(sl) {
+  if (!sl) return;
+  const set = (id, val) => { const el = $(id); if (el && val != null) el.value = val; };
+  set("sp-game-w",  sl.game?.max_w);   set("sp-game-h",  sl.game?.max_h);   set("sp-game-cy", sl.game?.center_y);
+  set("sp-top-w",   sl.top?.max_w);    set("sp-top-h",   sl.top?.max_h);    set("sp-top-cy",  sl.top?.center_y);
+  set("sp-bot-w",   sl.bottom?.max_w); set("sp-bot-h",   sl.bottom?.max_h); set("sp-bot-cy",  sl.bottom?.center_y);
+}
+
+// ── UI wiring ──────────────────────────────────────────────────────────────
+function wireUI() {
+  // Template
+  const openTpl = () => $("input-template").click();
+  $("btn-load-template").addEventListener("click",  openTpl);
+  $("btn-load-template2").addEventListener("click", openTpl);
+  $("input-template").addEventListener("change", e => loadTemplate(e.target.files[0]));
+
+  // Profile I/O
+  $("btn-load-profile").addEventListener("click",  () => $("input-profile").click());
+  $("input-profile").addEventListener("change",   e => loadProfileJSON(e.target.files[0]));
+  $("btn-export-json").addEventListener("click",  doExportJSON);
+  $("btn-export-json2").addEventListener("click", doExportJSON);
+  $("btn-export-py").addEventListener("click",    doExportPython);
+  $("btn-copy-json").addEventListener("click",    () => {
+    navigator.clipboard.writeText($("json-preview").textContent);
+    toast("Copied to clipboard");
+  });
+
+  // Add objects
+  ["logo","marquee","spine","cover"].forEach(t => {
+    $(`btn-add-${t}`)?.addEventListener("click", () => {
+      engine.addObject(t);
+      buildObjList();
+      refreshJson();
+    });
+  });
+
+  $("btn-remove").addEventListener("click", () => {
+    engine.removeSelected();
+    buildObjList();
+    refreshJson();
+  });
+
+  // Grid
+  $("cb-show-grid").addEventListener("change",   e => { engine.showGrid    = e.target.checked; engine.redraw(); });
+  $("cb-snap-grid").addEventListener("change",   e => { engine.snapToGrid  = e.target.checked; });
+  $("input-grid-size").addEventListener("input", e => {
+    const v = parseInt(e.target.value);
+    if (v > 0) { engine.gridSize = v; engine.redraw(); }
+  });
+
+  // Scanlines
+  $("cb-scanlines").addEventListener("change", e => document.body.classList.toggle("scanlines", e.target.checked));
+
+  // Zoom
+  $("btn-zoom-in").addEventListener("click",  () => engine.setZoom(engine.zoom * 1.25));
+  $("btn-zoom-out").addEventListener("click", () => engine.setZoom(engine.zoom * 0.8));
+  $("btn-zoom-fit").addEventListener("click", () => {
+    engine.fitToScreen($("canvas-area").clientWidth, $("canvas-area").clientHeight);
+  });
+
+  // Property inputs
+  ["x","y","width","height"].forEach(key => {
+    $(`prop-${key}`)?.addEventListener("input", e => {
+      engine.setProperty(key, e.target.value);
+      refreshJson();
+      updateQuadDisplay(engine.selected);
+    });
+  });
+
+  // Profile settings
+  $("sel-spine-source").addEventListener("change", e => { extras.spine_source = e.target.value; refreshJson(); });
+  $("sel-cover-fit").addEventListener("change",    e => { extras.cover_fit    = e.target.value; refreshJson(); });
+  $("inp-source-frac").addEventListener("input",   e => { extras.spine_source_frac = parseFloat(e.target.value); refreshJson(); });
+  $("inp-logo-alpha").addEventListener("input",    e => {
+    extras.spine_layout = extras.spine_layout || {};
+    extras.spine_layout.logo_alpha = parseFloat(e.target.value);
+    refreshJson();
+  });
+  $("cb-rotate-logos").addEventListener("change",  e => {
+    extras.spine_layout = extras.spine_layout || {};
+    extras.spine_layout.rotate_logos = e.target.checked;
+    refreshJson();
+  });
+
+  // Spine slot inputs → extras
+  const spSlot = (id, slot, key) => {
+    $(id)?.addEventListener("input", e => {
+      extras.spine_layout = extras.spine_layout || {};
+      extras.spine_layout[slot] = extras.spine_layout[slot] || {};
+      extras.spine_layout[slot][key] = parseInt(e.target.value);
+      refreshJson();
+    });
+  };
+  spSlot("sp-game-w","game","max_w");  spSlot("sp-game-h","game","max_h");  spSlot("sp-game-cy","game","center_y");
+  spSlot("sp-top-w","top","max_w");    spSlot("sp-top-h","top","max_h");    spSlot("sp-top-cy","top","center_y");
+  spSlot("sp-bot-w","bottom","max_w"); spSlot("sp-bot-h","bottom","max_h"); spSlot("sp-bot-cy","bottom","center_y");
+
+  // Drag & drop on canvas area
+  $("canvas-area").addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  $("canvas-area").addEventListener("drop",     e => {
+    e.preventDefault();
+    const file = [...e.dataTransfer.files][0];
+    if (!file) return;
+    if (file.name.endsWith(".json")) loadProfileJSON(file);
+    else loadTemplate(file);
+  });
+
+  // Profile name → refresh json
+  $("profile-name-input").addEventListener("input", refreshJson);
+}
+
+// ── Section toggle ─────────────────────────────────────────────────────────
+function initSections() {
+  $$(".section").forEach((s, i) => { if (i < 5) s.classList.add("open"); });
+  $$(".section-title").forEach(t => t.addEventListener("click", () => t.parentElement.classList.toggle("open")));
+}
+
+// ── Canvas events ──────────────────────────────────────────────────────────
+function onSelect(obj) {
+  // Property panel
+  $("props-title").textContent = obj ? `▸ ${obj.type.toUpperCase()}` : "▸ SELECT AN OBJECT";
+  ["x","y","width","height"].forEach(key => {
+    const el = $(`prop-${key}`);
+    if (!el) return;
+    el.disabled = !obj;
+    el.value    = obj ? Math.round(obj[key === "width" ? "w" : key === "height" ? "h" : key]) : "";
+  });
+
+  // Show/hide contextual panels
+  $("spine-slots").style.display        = (obj?.type === "spine")  ? "block" : "none";
+  $("cover-quad-panel").style.display   = (obj?.type === "cover")  ? "block" : "none";
+  updateQuadDisplay(obj);
+
+  // Object list highlight
+  $$(".obj-item").forEach(el => el.classList.toggle("active", obj && el.dataset.type === obj.type));
+}
+
+function onObjectChange(obj) {
+  onSelect(obj);
+  refreshJson();
+}
+
+function updateQuadDisplay(obj) {
+  if (!obj || obj.type !== "cover") return;
+  $("quad-tl").textContent = `[${Math.round(obj.x)}, ${Math.round(obj.y)}]`;
+  $("quad-tr").textContent = `[${Math.round(obj.x+obj.w)}, ${Math.round(obj.y)}]`;
+  $("quad-br").textContent = `[${Math.round(obj.x+obj.w)}, ${Math.round(obj.y+obj.h)}]`;
+  $("quad-bl").textContent = `[${Math.round(obj.x)}, ${Math.round(obj.y+obj.h)}]`;
+}
+
+// ── Object list (sidebar) ──────────────────────────────────────────────────
+function buildObjList() {
+  const list = $("obj-list");
+  list.innerHTML = "";
+  if (engine.objects.length === 0) {
+    list.innerHTML = `<div style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);
+      text-align:center;padding:.5rem 0">No objects — add one above</div>`;
+    return;
+  }
+  engine.objects.forEach(obj => {
+    const item = document.createElement("div");
+    item.className = "obj-item" + (engine.selected === obj ? " active" : "");
+    item.dataset.type = obj.type;
+    const color = COLORS[obj.type]?.stroke || "#fff";
+    item.innerHTML = `
+      <div class="obj-swatch swatch-${obj.type}"></div>
+      <span class="obj-name">${obj.type}</span>
+      <span class="obj-coords">${Math.round(obj.x)},${Math.round(obj.y)}</span>`;
+    item.addEventListener("click", () => {
+      engine.selected = obj; engine.redraw(); onSelect(obj);
+    });
+    list.appendChild(item);
+  });
+}
+
+// ── JSON preview ───────────────────────────────────────────────────────────
+function refreshJson() {
+  buildObjList();
+  collectExtras();
+  const name    = $("profile-name-input").value || "untitled";
+  const profile = exportProfile(name, engine.objects, tplImg, extras);
+  $("json-preview").textContent = JSON.stringify(profile, null, 2);
+}
+
+function collectExtras() {
+  extras.spine_source      = $("sel-spine-source").value;
+  extras.cover_fit         = $("sel-cover-fit").value;
+  extras.spine_source_frac = parseFloat($("inp-source-frac").value) || 0.20;
+  extras.spine_layout      = extras.spine_layout || {};
+  extras.spine_layout.logo_alpha   = parseFloat($("inp-logo-alpha").value) || 0.85;
+  extras.spine_layout.rotate_logos = $("cb-rotate-logos").checked;
+  extras.spine_layout.game   = { max_w: iv("sp-game-w"), max_h: iv("sp-game-h"), center_y: iv("sp-game-cy") };
+  extras.spine_layout.top    = { max_w: iv("sp-top-w"),  max_h: iv("sp-top-h"),  center_y: iv("sp-top-cy")  };
+  extras.spine_layout.bottom = { max_w: iv("sp-bot-w"),  max_h: iv("sp-bot-h"),  center_y: iv("sp-bot-cy")  };
+}
+const iv = id => parseInt($(id)?.value) || 0;
+
+// ── Export ─────────────────────────────────────────────────────────────────
+function doExportJSON() {
+  collectExtras();
+  const name    = $("profile-name-input").value || "untitled";
+  const profile = exportProfile(name, engine.objects, tplImg, extras);
+  downloadFile(JSON.stringify(profile, null, 2), `${name}.json`);
+  toast("profile.json exported");
+}
+function doExportPython() {
+  collectExtras();
+  const name    = $("profile-name-input").value || "untitled";
+  const profile = exportProfile(name, engine.objects, tplImg, extras);
+  downloadFile(exportPython(profile), `${name}.py`, "text/plain");
+  toast("Python snippet exported");
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+let _tt = null;
+function toast(msg, err=false) {
+  let t = $("_toast");
+  if (!t) {
+    t = Object.assign(document.createElement("div"), { id:"_toast" });
+    Object.assign(t.style, {
+      position:"fixed",bottom:"1.5rem",left:"50%",transform:"translateX(-50%)",
+      fontFamily:"var(--font-mono)",fontSize:".8rem",padding:".45rem 1.1rem",
+      borderRadius:"4px",zIndex:"9998",transition:"opacity .3s",pointerEvents:"none",
+      whiteSpace:"nowrap",
+    });
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.cssText += err
+    ? ";background:rgba(255,43,214,.13);border:1px solid var(--accent2);color:var(--accent2);opacity:1"
+    : ";background:rgba(0,234,255,.1);border:1px solid var(--accent);color:var(--accent);opacity:1";
+  clearTimeout(_tt);
+  _tt = setTimeout(() => t.style.opacity = "0", 2800);
+}
+</script>
+
+</body>
+</html>

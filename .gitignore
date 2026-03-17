@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime output
+data/output/converted/
+data/output/temp/
+data/output/logs/
+
+# User inputs (large / personal)
+data/inputs/covers/
+data/inputs/marquees/
+!data/inputs/covers/.gitkeep
+!data/inputs/marquees/.gitkeep
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test artefacts
+tests/visual_output/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

@@ -1,0 +1,32 @@
+{
+  "name": "arcade",
+  "description": "Arcade cabinet box",
+  "version": "1.0.0",
+  "author": "box3d",
+
+  "template_size": { "width": 665, "height": 907 },
+
+  "spine": { "width": 100, "height": 848 },
+  "cover": { "width": 471, "height": 848 },
+
+  "spine_quad": {
+    "tl": [4,   48], "tr": [103,  26],
+    "br": [103, 878], "bl": [4,  854]
+  },
+  "cover_quad": {
+    "tl": [103,  26], "tr": [574, 108],
+    "br": [574, 796], "bl": [103, 878]
+  },
+
+  "spine_source_frac": 0.20,
+  "spine_source": "left",
+  "cover_fit": "stretch",
+
+  "spine_layout": {
+    "game":   { "max_w": 80,  "max_h": 320, "center_y": 453 },
+    "top":    { "max_w": 194, "max_h": 194, "center_y": 150 },
+    "bottom": { "max_w": 108, "max_h": 108, "center_y": 777 },
+    "logo_alpha": 0.85,
+    "rotate_logos": true
+  }
+}
