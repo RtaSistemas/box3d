@@ -7,87 +7,169 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/main.css">
-  <link rel="stylesheet" href="styles/retro.css">
+  <style>
+    /* =========================================
+       main.css — Layout system
+       ========================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0b0e14;
+      --panel:     #12161e;
+      --panel2:    #181d28;
+      --border:    #1e2535;
+      --accent:    #00eaff;
+      --accent2:   #ff2bd6;
+      --warn:      #ffb347;
+      --ok:        #39ff7a;
+      --text:      #c8d0e0;
+      --text-dim:  #5a6480;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-ui:   'Exo 2', sans-serif;
+      --header-h:  52px;
+      --left-w:    220px;
+      --right-w:   240px;
+      --radius:    6px;
+      --transition: .15s ease;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: 13px; }
+    #app { display: grid; grid-template-rows: var(--header-h) 1fr; grid-template-columns: var(--left-w) 1fr var(--right-w); height: 100vh; }
+    #header { grid-column: 1 / -1; display: flex; align-items: center; gap: 1rem; padding: 0 1rem; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 10; }
+    #header .logo { font-family: var(--font-mono); font-size: 1rem; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+    #header .logo span { color: var(--accent2); }
+    #header .version { font-family: var(--font-mono); font-size: .7rem; color: var(--text-dim); }
+    #header .sep { flex: 1; }
+    #profile-name-input { background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: .85rem; padding: .3rem .6rem; border-radius: var(--radius); width: 180px; outline: none; transition: border-color var(--transition); }
+    #profile-name-input:focus { border-color: var(--accent); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+    #panel-left { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; gap: 0; }
+    #canvas-area { background: var(--bg); overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+    #canvas-wrap { position: relative; transform-origin: center; }
+    #main-canvas { display: block; cursor: crosshair; }
+    #canvas-hint { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); font-family: var(--font-mono); font-size: .7rem; color: var(--text-dim); pointer-events: none; }
+    #panel-right { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+    .section { border-bottom: 1px solid var(--border); }
+    .section-title { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); padding: .6rem .75rem .4rem; display: flex; align-items: center; gap: .4rem; cursor: pointer; user-select: none; }
+    .section-title::before { content: '▶'; font-size: .6rem; color: var(--accent); transition: transform var(--transition); }
+    .section.open .section-title::before { transform: rotate(90deg); }
+    .section-body { display: none; padding: .5rem .75rem .75rem; }
+    .section.open .section-body { display: block; }
+    .field { display: flex; align-items: center; justify-content: space-between; margin-bottom: .45rem; }
+    .field label { color: var(--text-dim); font-size: .78rem; }
+    .field input[type=number], .field input[type=text], .field select { background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: .78rem; padding: .25rem .4rem; border-radius: 3px; width: 80px; outline: none; }
+    .field input[type=number]:focus, .field input[type=text]:focus { border-color: var(--accent); }
+    .field input[type=range] { width: 80px; accent-color: var(--accent); }
+    .field input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+    .field select { width: 88px; }
+    .btn { display: block; width: 100%; background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: .75rem; padding: .4rem .6rem; border-radius: var(--radius); cursor: pointer; text-align: left; transition: border-color var(--transition), color var(--transition), background var(--transition); margin-bottom: .35rem; }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { border-color: var(--accent); color: var(--accent); background: rgba(0,234,255,.06); }
+    .btn.primary:hover { background: rgba(0,234,255,.14); }
+    .btn.danger { border-color: var(--accent2); color: var(--accent2); }
+    .btn.icon { text-align: center; }
+    .btn-row { display: flex; gap: .35rem; }
+    .btn-row .btn { flex: 1; text-align: center; font-size: .72rem; }
+    .obj-list { display: flex; flex-direction: column; gap: .3rem; }
+    .obj-item { display: flex; align-items: center; gap: .5rem; padding: .3rem .5rem; border-radius: var(--radius); border: 1px solid transparent; cursor: pointer; transition: background var(--transition), border-color var(--transition); }
+    .obj-item:hover { background: var(--panel2); }
+    .obj-item.active { background: rgba(0,234,255,.08); border-color: var(--accent); }
+    .obj-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .obj-name { font-family: var(--font-mono); font-size: .78rem; flex: 1; }
+    .obj-coords { font-family: var(--font-mono); font-size: .65rem; color: var(--text-dim); }
+    #props-title { font-family: var(--font-mono); font-size: .8rem; color: var(--accent); padding: .75rem .75rem .3rem; text-transform: uppercase; letter-spacing: .1em; }
+    .prop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; padding: .5rem .75rem; }
+    .prop-item label { display: block; font-family: var(--font-mono); font-size: .65rem; color: var(--text-dim); margin-bottom: .2rem; text-transform: uppercase; }
+    .prop-item input { width: 100%; background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: .82rem; padding: .3rem .4rem; border-radius: 3px; outline: none; }
+    .prop-item input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,234,255,.15); }
+    #json-preview { font-family: var(--font-mono); font-size: .68rem; color: var(--text-dim); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: .5rem; margin: .5rem .75rem; max-height: 160px; overflow-y: auto; white-space: pre; line-height: 1.5; }
+    #zoom-display { font-family: var(--font-mono); font-size: .7rem; color: var(--accent); background: rgba(0,234,255,.08); border: 1px solid rgba(0,234,255,.2); border-radius: 3px; padding: .2rem .5rem; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+    /* =========================================
+       retro.css — Visual identity layer
+       ========================================= */
+    body.scanlines::after {
+      content: ''; position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,.09) 0px, rgba(0,0,0,.09) 1px, transparent 1px, transparent 3px);
+      pointer-events: none; z-index: 9999;
+    }
+    .neon-text  { color: var(--accent);  text-shadow: 0 0 8px var(--accent),  0 0 20px rgba(0,234,255,.4); }
+    .neon-pink  { color: var(--accent2); text-shadow: 0 0 8px var(--accent2), 0 0 20px rgba(255,43,214,.4); }
+    #header { box-shadow: 0 1px 0 rgba(0,234,255,.15), 0 2px 12px rgba(0,234,255,.06); }
+    #header .logo { text-shadow: 0 0 12px rgba(0,234,255,.5); }
+    #panel-left  { box-shadow: inset -1px 0 8px rgba(0,0,0,.3); }
+    #panel-right { box-shadow: inset 1px 0 8px rgba(0,0,0,.3); }
+    .section-title { background: linear-gradient(90deg, rgba(0,234,255,.04) 0%, transparent 100%); }
+    .btn.active { background: rgba(0,234,255,.12); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 8px rgba(0,234,255,.2); }
+    #canvas-wrap { filter: drop-shadow(0 0 18px rgba(0,234,255,.08)); }
+    .swatch-logo    { background: #ff4757; box-shadow: 0 0 6px #ff4757; }
+    .swatch-marquee { background: #00eaff; box-shadow: 0 0 6px #00eaff; }
+    .swatch-spine   { background: #ffd32a; box-shadow: 0 0 6px #ffd32a; }
+    .swatch-cover   { background: #2ed573; box-shadow: 0 0 6px #2ed573; }
+    #canvas-area {
+      background-image: linear-gradient(rgba(0,234,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(0,234,255,.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .badge { display: inline-block; font-family: var(--font-mono); font-size: .65rem; padding: .15rem .45rem; border-radius: 3px; text-transform: uppercase; letter-spacing: .08em; }
+    .badge-ok   { background: rgba(57,255,122,.12); color: var(--ok);   border: 1px solid rgba(57,255,122,.3); }
+    .badge-warn { background: rgba(255,179,71,.12); color: var(--warn); border: 1px solid rgba(255,179,71,.3); }
+    .badge-err  { background: rgba(255,43,214,.12); color: var(--accent2); border: 1px solid rgba(255,43,214,.3); }
+    ::-webkit-scrollbar-thumb { background: rgba(0,234,255,.15); }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,234,255,.35); box-shadow: 0 0 6px rgba(0,234,255,.4); }
+    .prop-item input:focus { box-shadow: 0 0 0 2px rgba(0,234,255,.2), 0 0 8px rgba(0,234,255,.1); }
+    [data-tip] { position: relative; }
+    [data-tip]::after {
+      content: attr(data-tip); position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+      background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: .65rem;
+      padding: .2rem .5rem; border-radius: 3px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 1000;
+    }
+    [data-tip]:hover::after { opacity: 1; }
+  </style>
 </head>
 <body>
 
 <div id="app">
 
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- HEADER                                                              -->
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
   <header id="header">
     <div class="logo neon-text">BOX<span>3D</span> DESIGNER PRO</div>
     <div class="version">v1.0.0</div>
     <div class="sep"></div>
-
     <label style="font-size:.75rem;color:var(--text-dim);margin-right:.25rem">Profile:</label>
     <input id="profile-name-input" type="text" placeholder="untitled" value="untitled">
-
     <div class="sep"></div>
-
-    <button class="btn" id="btn-load-template"
-            data-tip="Load a PNG template image" style="width:auto;margin:0;padding:.3rem .7rem">
-      ◈ Template
-    </button>
-    <button class="btn primary" id="btn-export-json"
-            style="width:auto;margin:0;padding:.3rem .7rem">
-      ↓ Export JSON
-    </button>
-
+    <button class="btn" id="btn-load-template" data-tip="Load a PNG template image" style="width:auto;margin:0;padding:.3rem .7rem">◈ Template</button>
+    <button class="btn primary" id="btn-export-json" style="width:auto;margin:0;padding:.3rem .7rem">↓ Export JSON</button>
     <div class="status-dot" id="status-dot"></div>
-
-    <!-- Hidden file inputs -->
     <input type="file" id="input-template" accept="image/*" style="display:none">
     <input type="file" id="input-profile"  accept=".json"   style="display:none">
   </header>
 
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- LEFT PANEL — Tools                                                  -->
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
   <aside id="panel-left">
-
-    <!-- Template -->
     <div class="section open">
       <div class="section-title">Template</div>
       <div class="section-body">
         <button class="btn" id="btn-load-template2">◈ Load Image</button>
-        <div id="template-info" style="font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);margin-top:.3rem">
-          No template loaded
-        </div>
+        <div id="template-info" style="font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);margin-top:.3rem">No template loaded</div>
       </div>
     </div>
-
-    <!-- Layout Objects -->
     <div class="section open">
       <div class="section-title">Layout Objects</div>
       <div class="section-body">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.5rem">
-          <button class="btn" id="btn-add-spine"
-                  style="border-color:#ffd32a;color:#ffd32a">＋ Spine</button>
-          <button class="btn" id="btn-add-cover"
-                  style="border-color:#2ed573;color:#2ed573">＋ Cover</button>
-          <button class="btn" id="btn-add-logo"
-                  style="border-color:#ff4757;color:#ff4757">＋ Logo</button>
-          <button class="btn" id="btn-add-marquee"
-                  style="border-color:#00eaff;color:#00eaff">＋ Marquee</button>
+          <button class="btn" id="btn-add-spine" style="border-color:#ffd32a;color:#ffd32a">＋ Spine</button>
+          <button class="btn" id="btn-add-cover" style="border-color:#2ed573;color:#2ed573">＋ Cover</button>
+          <button class="btn" id="btn-add-logo" style="border-color:#ff4757;color:#ff4757">＋ Logo</button>
+          <button class="btn" id="btn-add-marquee" style="border-color:#00eaff;color:#00eaff">＋ Marquee</button>
         </div>
         <button class="btn danger" id="btn-remove">✕ Remove Selected</button>
-
         <div style="margin-top:.6rem">
-          <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
-                      margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.1em">
-            Objects
-          </div>
-          <div id="obj-list" class="obj-list">
-            <!-- Populated by JS -->
-          </div>
+          <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.1em">Objects</div>
+          <div id="obj-list" class="obj-list"></div>
         </div>
       </div>
     </div>
-
-    <!-- Profile I/O -->
     <div class="section open">
       <div class="section-title">Profile I/O</div>
       <div class="section-body">
@@ -97,73 +179,29 @@
         <button class="btn" id="btn-copy-json">⧉ Copy JSON</button>
       </div>
     </div>
-
-    <!-- Profile Settings -->
     <div class="section open">
       <div class="section-title">Profile Settings</div>
       <div class="section-body">
-        <div class="field">
-          <label>Spine source</label>
-          <select id="sel-spine-source">
-            <option value="left">left</option>
-            <option value="right">right</option>
-            <option value="center">center</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Cover fit</label>
-          <select id="sel-cover-fit">
-            <option value="stretch">stretch</option>
-            <option value="fit">fit</option>
-            <option value="crop">crop</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Source frac</label>
-          <input type="number" id="inp-source-frac" value="0.20" min="0.05" max="0.5" step="0.05" style="width:70px">
-        </div>
-        <div class="field">
-          <label>Logo alpha</label>
-          <input type="number" id="inp-logo-alpha" value="0.85" min="0" max="1" step="0.05" style="width:70px">
-        </div>
-        <div class="field">
-          <label>Rotate logos</label>
-          <input type="checkbox" id="cb-rotate-logos" checked>
-        </div>
+        <div class="field"><label>Spine source</label><select id="sel-spine-source"><option value="left">left</option><option value="right">right</option><option value="center">center</option></select></div>
+        <div class="field"><label>Cover fit</label><select id="sel-cover-fit"><option value="stretch">stretch</option><option value="fit">fit</option><option value="crop">crop</option></select></div>
+        <div class="field"><label>Source frac</label><input type="number" id="inp-source-frac" value="0.20" min="0.05" max="0.5" step="0.05" style="width:70px"></div>
+        <div class="field"><label>Logo alpha</label><input type="number" id="inp-logo-alpha" value="0.85" min="0" max="1" step="0.05" style="width:70px"></div>
+        <div class="field"><label>Rotate logos</label><input type="checkbox" id="cb-rotate-logos" checked></div>
       </div>
     </div>
-
-    <!-- Grid -->
     <div class="section">
       <div class="section-title">Grid &amp; Snap</div>
       <div class="section-body">
-        <div class="field">
-          <label>Show grid</label>
-          <input type="checkbox" id="cb-show-grid" checked>
-        </div>
-        <div class="field">
-          <label>Snap to grid</label>
-          <input type="checkbox" id="cb-snap-grid" checked>
-        </div>
-        <div class="field">
-          <label>Grid size</label>
-          <input type="number" id="input-grid-size" value="10" min="1" max="100" style="width:60px">
-        </div>
+        <div class="field"><label>Show grid</label><input type="checkbox" id="cb-show-grid" checked></div>
+        <div class="field"><label>Snap to grid</label><input type="checkbox" id="cb-snap-grid" checked></div>
+        <div class="field"><label>Grid size</label><input type="number" id="input-grid-size" value="10" min="1" max="100" style="width:60px"></div>
       </div>
     </div>
-
-    <!-- Visual -->
     <div class="section">
       <div class="section-title">Visual FX</div>
       <div class="section-body">
-        <div class="field">
-          <label>Scanlines</label>
-          <input type="checkbox" id="cb-scanlines">
-        </div>
-        <div class="field">
-          <label>Zoom</label>
-          <span id="zoom-display" style="font-family:var(--font-mono);font-size:.78rem;color:var(--accent)">100%</span>
-        </div>
+        <div class="field"><label>Scanlines</label><input type="checkbox" id="cb-scanlines"></div>
+        <div class="field"><label>Zoom</label><span id="zoom-display" style="font-family:var(--font-mono);font-size:.78rem;color:var(--accent)">100%</span></div>
         <div class="btn-row" style="margin-top:.4rem">
           <button class="btn" id="btn-zoom-out">−</button>
           <button class="btn" id="btn-zoom-fit">Fit</button>
@@ -171,13 +209,10 @@
         </div>
       </div>
     </div>
-
-    <!-- Keyboard reference -->
     <div class="section">
       <div class="section-title">Keyboard</div>
       <div class="section-body">
-        <table style="width:100%;font-family:var(--font-mono);font-size:.68rem;
-                      color:var(--text-dim);border-collapse:collapse;line-height:1.8">
+        <table style="width:100%;font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);border-collapse:collapse;line-height:1.8">
           <tr><td style="color:var(--accent)">↑↓←→</td><td>Move 1 px</td></tr>
           <tr><td style="color:var(--accent)">⇧+Arrow</td><td>Move 10 px</td></tr>
           <tr><td style="color:var(--accent)">Del</td><td>Remove</td></tr>
@@ -186,68 +221,39 @@
         </table>
       </div>
     </div>
-
   </aside>
 
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- CENTER — Canvas                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
   <main id="canvas-area">
     <div id="canvas-wrap">
       <canvas id="main-canvas" width="703" height="1000"></canvas>
     </div>
-    <div id="canvas-hint">
-      Drag to move · Corner handles to resize · Drop template or profile.json here
-    </div>
+    <div id="canvas-hint">Drag to move · Corner handles to resize · Drop template or profile.json here</div>
   </main>
 
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- RIGHT PANEL — Properties                                           -->
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
   <aside id="panel-right">
-
     <div id="props-title">▸ SELECT AN OBJECT</div>
-
-    <!-- X Y W H -->
     <div class="prop-grid">
-      <div class="prop-item">
-        <label>X</label>
-        <input type="number" id="prop-x" disabled placeholder="—">
-      </div>
-      <div class="prop-item">
-        <label>Y</label>
-        <input type="number" id="prop-y" disabled placeholder="—">
-      </div>
-      <div class="prop-item">
-        <label>Width</label>
-        <input type="number" id="prop-width" disabled placeholder="—">
-      </div>
-      <div class="prop-item">
-        <label>Height</label>
-        <input type="number" id="prop-height" disabled placeholder="—">
-      </div>
+      <div class="prop-item"><label>X</label><input type="number" id="prop-x" disabled placeholder="—"></div>
+      <div class="prop-item"><label>Y</label><input type="number" id="prop-y" disabled placeholder="—"></div>
+      <div class="prop-item"><label>Width</label><input type="number" id="prop-width" disabled placeholder="—"></div>
+      <div class="prop-item"><label>Height</label><input type="number" id="prop-height" disabled placeholder="—"></div>
     </div>
-
-    <!-- Spine layout slots (shown when spine is selected) -->
     <div id="spine-slots" class="section" style="display:none">
       <div class="section-title">Spine Logo Slots</div>
       <div class="section-body">
-        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
-                    margin-bottom:.4rem;text-transform:uppercase">Game logo</div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin-bottom:.4rem;text-transform:uppercase">Game logo</div>
         <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
           <div class="prop-item"><label>max_w</label><input type="number" id="sp-game-w" value="80"></div>
           <div class="prop-item"><label>max_h</label><input type="number" id="sp-game-h" value="320"></div>
           <div class="prop-item"><label>center_y</label><input type="number" id="sp-game-cy" value="453"></div>
         </div>
-        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
-                    margin:.4rem 0;text-transform:uppercase">Top logo</div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin:.4rem 0;text-transform:uppercase">Top logo</div>
         <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
           <div class="prop-item"><label>max_w</label><input type="number" id="sp-top-w" value="80"></div>
           <div class="prop-item"><label>max_h</label><input type="number" id="sp-top-h" value="120"></div>
           <div class="prop-item"><label>center_y</label><input type="number" id="sp-top-cy" value="150"></div>
         </div>
-        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
-                    margin:.4rem 0;text-transform:uppercase">Bottom logo</div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin:.4rem 0;text-transform:uppercase">Bottom logo</div>
         <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
           <div class="prop-item"><label>max_w</label><input type="number" id="sp-bot-w" value="80"></div>
           <div class="prop-item"><label>max_h</label><input type="number" id="sp-bot-h" value="80"></div>
@@ -255,51 +261,320 @@
         </div>
       </div>
     </div>
-
-    <!-- Cover quad (shown when cover is selected) -->
     <div id="cover-quad-panel" class="section" style="display:none">
       <div class="section-title">Cover Quad (perspective)</div>
       <div class="section-body">
-        <div style="font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);
-                    line-height:1.7">
+        <div style="font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);line-height:1.7">
           <div>TL → <span id="quad-tl" class="neon-text">—</span></div>
           <div>TR → <span id="quad-tr" class="neon-text">—</span></div>
           <div>BR → <span id="quad-br" class="neon-text">—</span></div>
           <div>BL → <span id="quad-bl" class="neon-text">—</span></div>
         </div>
-        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);
-                    margin-top:.5rem">
-          Quad derived from bounding box.<br>Use profile.json to set exact warp corners.
-        </div>
+        <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin-top:.5rem">Quad derived from bounding box.<br>Use profile.json to set exact warp corners.</div>
       </div>
     </div>
-
-    <!-- JSON preview -->
     <div class="section open" style="flex:1">
       <div class="section-title">JSON Preview</div>
       <div class="section-body" style="padding-bottom:0">
         <pre id="json-preview">{}</pre>
       </div>
     </div>
-
   </aside>
+</div>
 
-</div><!-- #app -->
+<script>
+// =========================================================================
+// 1. CONFIG & UTILS (from canvas.js and profile.js)
+// =========================================================================
+const SCHEMA_VERSION = "1.0.0";
+const COLORS = {
+  logo:    { fill: "rgba(255,71,87,.25)",  stroke: "#ff4757" },
+  marquee: { fill: "rgba(0,234,255,.2)",   stroke: "#00eaff" },
+  spine:   { fill: "rgba(255,211,42,.2)",  stroke: "#ffd32a" },
+  cover:   { fill: "rgba(46,213,115,.2)",  stroke: "#2ed573" },
+};
+const HANDLE_SIZE = 8;
+const MIN_DIM     = 10;
 
-<script type="module">
-import { CanvasEngine, COLORS }  from "./canvas.js";
-import { exportProfile, importProfile, exportPython, downloadFile } from "./profile.js";
-
-// ── Helpers ──────────────────────────────────────────────────────────────
 const $  = id  => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
-// ── State ─────────────────────────────────────────────────────────────────
+// =========================================================================
+// 2. PROFILE LOGIC (from profile.js)
+// =========================================================================
+function exportProfile(name, objects, templateImg, extras = {}) {
+  const find = (type) => objects.find(o => o.type === type);
+  const toRect = (o) => o ? { x: Math.round(o.x), y: Math.round(o.y), width: Math.round(o.w), height: Math.round(o.h) } : { x:0, y:0, width:0, height:0 };
+
+  const spine  = find("spine");
+  const cover  = find("cover");
+  const tw = templateImg ? templateImg.naturalWidth  : (extras.tw || 700);
+  const th = templateImg ? templateImg.naturalHeight : (extras.th || 1000);
+
+  const spineRect = toRect(spine);
+  const coverRect = toRect(cover);
+
+  const makeQuad = (r) => ({ tl: [r.x, r.y], tr: [r.x+r.width, r.y], br: [r.x+r.width, r.y+r.height], bl: [r.x, r.y+r.height] });
+
+  return {
+    name, version: SCHEMA_VERSION, template: "template.png",
+    template_size: { width: tw, height: th },
+    spine: { width: spineRect.width,  height: spineRect.height },
+    cover: { width: coverRect.width,  height: coverRect.height },
+    spine_quad: makeQuad(spineRect), cover_quad: makeQuad(coverRect),
+    spine_source_frac: extras.spine_source_frac ?? 0.20,
+    spine_source: extras.spine_source ?? "left",
+    cover_fit:    extras.cover_fit ?? "stretch",
+    spine_layout: extras.spine_layout ?? {
+      logo_alpha: 0.85, rotate_logos: true,
+      game:   { max_w: 80,  max_h: 320, center_y: Math.round(th * 0.5) },
+      top:    { max_w: 80,  max_h: 120, center_y: Math.round(th * 0.16) },
+      bottom: { max_w: 80,  max_h: 80,  center_y: Math.round(th * 0.84) }
+    },
+    logo:    toRect(find("logo")),
+    marquee: toRect(find("marquee")),
+  };
+}
+
+function importProfile(json) {
+  const objects = [];
+  const addRect = (type, r) => { if (r) objects.push({ type, x: r.x ?? 0, y: r.y ?? 0, w: r.width ?? 0, h: r.height ?? 0 }); };
+
+  if (json.spine_quad) {
+    const q = json.spine_quad;
+    const xs = [q.tl[0], q.tr[0], q.br[0], q.bl[0]];
+    const ys = [q.tl[1], q.tr[1], q.br[1], q.bl[1]];
+    addRect("spine", { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) });
+  }
+
+  if (json.cover_quad) {
+    const q = json.cover_quad;
+    const xs = [q.tl[0], q.tr[0], q.br[0], q.bl[0]];
+    const ys = [q.tl[1], q.tr[1], q.br[1], q.bl[1]];
+    addRect("cover", { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) });
+  }
+
+  addRect("logo",    json.logo);
+  addRect("marquee", json.marquee);
+  return { objects, extras: json, templateName: json.template };
+}
+
+function exportPython(profile) {
+  const j = JSON.stringify(profile, null, 2);
+  return `# Auto-generated by Box3D Designer Pro v${SCHEMA_VERSION}\n# Paste into your box3d profiles/ directory as profiles/${profile.name}/profile.json\n\nPROFILE = ${j.replace(/"([^"]+)":/g, '$1:').replace(/"/g, "'")}\n`;
+}
+
+function downloadFile(content, filename, mime = "application/json") {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// =========================================================================
+// 3. CANVAS ENGINE (from canvas.js)
+// =========================================================================
+class CanvasEngine {
+  constructor(canvasEl) {
+    this.el      = canvasEl;
+    this.ctx     = canvasEl.getContext("2d");
+    this.objects = [];
+    this.selected = null;
+    this.zoom    = 1;
+    this.gridSize  = 10;
+    this.snapToGrid  = true;
+    this.showGrid    = true;
+    this.templateImg = null;
+    this._drag  = null;
+    this._handlers = {};
+    this._bindEvents();
+  }
+
+  setTemplate(img) {
+    this.templateImg = img;
+    this.el.width    = img.naturalWidth;
+    this.el.height   = img.naturalHeight;
+    this.redraw();
+  }
+
+  addObject(type) {
+    const w = this.el.width  * .35 | 0;
+    const h = this.el.height * .4  | 0;
+    const x = ((this.el.width  - w) / 2 | 0);
+    const y = ((this.el.height - h) / 2 | 0);
+    const obj = { type, x, y, w, h };
+    this.objects.push(obj);
+    this.selected = obj;
+    this.redraw();
+    this._emit("select", obj);
+    return obj;
+  }
+
+  removeSelected() {
+    if (!this.selected) return;
+    this.objects = this.objects.filter(o => o !== this.selected);
+    this.selected = null;
+    this.redraw();
+    this._emit("select", null);
+  }
+
+  setZoom(z) {
+    this.zoom = Math.max(.1, Math.min(4, z));
+    this.el.style.transform = `scale(${this.zoom})`;
+    this._emit("zoom", this.zoom);
+  }
+
+  fitToScreen(containerW, containerH) {
+    const z  = Math.min((containerW - 40) / this.el.width, (containerH - 40) / this.el.height, 1);
+    this.setZoom(z);
+  }
+
+  setProperty(key, value) {
+    if (!this.selected) return;
+    const n = parseFloat(value);
+    if (isNaN(n)) return;
+    const map = { x:"x", y:"y", width:"w", height:"h" };
+    if (map[key]) { this.selected[map[key]] = n; this.redraw(); this._emit("change", this.selected); }
+  }
+
+  redraw() {
+    const W = this.el.width, H = this.el.height;
+    this.ctx.clearRect(0, 0, W, H);
+    if (this.templateImg) this.ctx.drawImage(this.templateImg, 0, 0, W, H);
+    else { this.ctx.fillStyle = "#0b0e14"; this.ctx.fillRect(0, 0, W, H); }
+    if (this.showGrid) this._drawGrid(W, H);
+    for (const obj of this.objects) this._drawObject(obj, obj === this.selected);
+  }
+
+  _drawGrid(W, H) {
+    const ctx = this.ctx, g = this.gridSize;
+    ctx.save(); ctx.strokeStyle = "rgba(0,234,255,.06)"; ctx.lineWidth = .5; ctx.beginPath();
+    for (let x = 0; x <= W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = 0; y <= H; y += g) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke(); ctx.restore();
+  }
+
+  _drawObject(obj, selected) {
+    const ctx = this.ctx;
+    const col = COLORS[obj.type] || { fill: "rgba(255,255,255,.15)", stroke: "#fff" };
+    ctx.save();
+    ctx.fillStyle = col.fill; ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
+    ctx.strokeStyle = col.stroke; ctx.lineWidth = selected ? 2 : 1;
+    if (!selected) ctx.setLineDash([4, 3]);
+    ctx.strokeRect(obj.x + .5, obj.y + .5, obj.w - 1, obj.h - 1);
+    ctx.setLineDash([]);
+    ctx.fillStyle = col.stroke; ctx.font = `bold ${Math.min(13, obj.h * .18 | 0)}px 'Share Tech Mono', monospace`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.globalAlpha = .85;
+    ctx.fillText(obj.type.toUpperCase(), obj.x + obj.w / 2, obj.y + obj.h / 2);
+    ctx.globalAlpha = 1;
+    if (selected) this._drawHandles(obj, col.stroke);
+    ctx.restore();
+  }
+
+  _drawHandles(obj, color) {
+    const ctx = this.ctx, s = HANDLE_SIZE, hs = s / 2;
+    const corners = [[obj.x, obj.y], [obj.x + obj.w, obj.y], [obj.x + obj.w, obj.y + obj.h], [obj.x, obj.y + obj.h]];
+    ctx.fillStyle = color; ctx.strokeStyle = "#0b0e14"; ctx.lineWidth = 1.5;
+    for (const [cx, cy] of corners) { ctx.fillRect(cx - hs, cy - hs, s, s); ctx.strokeRect(cx - hs, cy - hs, s, s); }
+  }
+
+  _hitHandle(obj, mx, my) {
+    const hs = (HANDLE_SIZE + 4) / 2;
+    const corners = [
+      { name:"tl", x:obj.x, y:obj.y }, { name:"tr", x:obj.x+obj.w, y:obj.y },
+      { name:"br", x:obj.x+obj.w, y:obj.y+obj.h }, { name:"bl", x:obj.x, y:obj.y+obj.h }
+    ];
+    return corners.find(c => Math.abs(mx - c.x) < hs && Math.abs(my - c.y) < hs) || null;
+  }
+
+  _hitObject(mx, my) {
+    for (let i = this.objects.length - 1; i >= 0; i--) {
+      const o = this.objects[i];
+      if (mx >= o.x && mx <= o.x + o.w && my >= o.y && my <= o.y + o.h) return o;
+    }
+    return null;
+  }
+
+  _toCanvas(e) {
+    const rect = this.el.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) * (this.el.width / rect.width), y: (e.clientY - rect.top) * (this.el.height / rect.height) };
+  }
+
+  _snap(v) { return this.snapToGrid ? Math.round(v / this.gridSize) * this.gridSize : v; }
+
+  _bindEvents() {
+    this.el.addEventListener("mousedown", e => {
+      e.preventDefault();
+      const { x: mx, y: my } = this._toCanvas(e);
+      if (this.selected) {
+        const handle = this._hitHandle(this.selected, mx, my);
+        if (handle) { this._drag = { mode: "resize", handle: handle.name, startX: mx, startY: my, orig: { ...this.selected } }; return; }
+      }
+      const hit = this._hitObject(mx, my);
+      if (hit) {
+        this.selected = hit;
+        this._drag = { mode: "move", startX: mx - hit.x, startY: my - hit.y, orig: { ...hit } };
+        this._emit("select", hit);
+      } else {
+        this.selected = null;
+        this._emit("select", null);
+      }
+      this.redraw();
+    });
+
+    window.addEventListener("mousemove", e => {
+      if (!this._drag) return;
+      const { x: mx, y: my } = this._toCanvas(e);
+      const d = this._drag, obj = this.selected, snap = this._snap.bind(this);
+
+      if (d.mode === "move") {
+        obj.x = snap(mx - d.startX); obj.y = snap(my - d.startY);
+      } else if (d.mode === "resize") {
+        const orig = d.orig;
+        if (d.handle === "tl") {
+          const nx = snap(mx), ny = snap(my);
+          obj.w = Math.max(MIN_DIM, orig.x + orig.w - nx); obj.h = Math.max(MIN_DIM, orig.y + orig.h - ny);
+          obj.x = orig.x + orig.w - obj.w; obj.y = orig.y + orig.h - obj.h;
+        } else if (d.handle === "tr") {
+          obj.w = Math.max(MIN_DIM, snap(mx) - orig.x); obj.h = Math.max(MIN_DIM, orig.y + orig.h - snap(my));
+          obj.y = orig.y + orig.h - obj.h;
+        } else if (d.handle === "br") {
+          obj.w = Math.max(MIN_DIM, snap(mx) - orig.x); obj.h = Math.max(MIN_DIM, snap(my) - orig.y);
+        } else if (d.handle === "bl") {
+          obj.w = Math.max(MIN_DIM, orig.x + orig.w - snap(mx)); obj.x = orig.x + orig.w - obj.w;
+          obj.h = Math.max(MIN_DIM, snap(my) - orig.y);
+        }
+      }
+      this.redraw(); this._emit("change", obj);
+    });
+
+    window.addEventListener("mouseup", () => { this._drag = null; });
+    window.addEventListener("keydown", e => {
+      if (!this.selected) return;
+      const step = e.shiftKey ? 10 : 1, obj = this.selected;
+      if (e.key === "ArrowLeft")  { obj.x -= step; }
+      else if (e.key === "ArrowRight") { obj.x += step; }
+      else if (e.key === "ArrowUp")    { obj.y -= step; }
+      else if (e.key === "ArrowDown")  { obj.y += step; }
+      else if (e.key === "Delete" || e.key === "Backspace") { this.removeSelected(); return; }
+      else return;
+      e.preventDefault(); this.redraw(); this._emit("change", obj);
+    });
+  }
+
+  on(event, fn)         { (this._handlers[event] = this._handlers[event] || []).push(fn); }
+  _emit(event, ...args) { (this._handlers[event] || []).forEach(fn => fn(...args)); }
+}
+
+// =========================================================================
+// 4. APP BOOTSTRAP (from index.html / app.js)
+// =========================================================================
 let engine  = null;
 let tplImg  = null;
 let extras  = {};
 
-// ── Bootstrap ─────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   engine = new CanvasEngine($("main-canvas"));
   engine.on("select", onSelect);
@@ -317,48 +592,36 @@ function drawPlaceholder() {
   const c = engine.el, ctx = c.getContext("2d");
   c.width = 703; c.height = 1000;
   ctx.fillStyle = "#12161e"; ctx.fillRect(0,0,c.width,c.height);
-  ctx.strokeStyle = "#1e2535"; ctx.lineWidth = 2;
-  ctx.strokeRect(2,2,c.width-4,c.height-4);
-  ctx.fillStyle = "#1e2535";
-  ctx.font = "bold 20px 'Share Tech Mono', monospace";
+  ctx.strokeStyle = "#1e2535"; ctx.lineWidth = 2; ctx.strokeRect(2,2,c.width-4,c.height-4);
+  ctx.fillStyle = "#1e2535"; ctx.font = "bold 20px 'Share Tech Mono', monospace";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("Drop template PNG here", c.width/2, c.height/2 - 18);
   ctx.font = "13px 'Share Tech Mono', monospace";
   ctx.fillText("or click  ◈ Template", c.width/2, c.height/2 + 18);
 }
 
-// ── Load template ──────────────────────────────────────────────────────────
 function loadTemplate(file) {
   if (!file || !file.type.startsWith("image/")) return;
   const img = new Image();
   img.onload = () => {
-    tplImg = img;
-    engine.setTemplate(img);
-    extras.tw = img.naturalWidth;
-    extras.th = img.naturalHeight;
+    tplImg = img; engine.setTemplate(img);
+    extras.tw = img.naturalWidth; extras.th = img.naturalHeight;
     $("template-info").textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
     refreshJson(); toast("Template loaded");
   };
   img.src = URL.createObjectURL(file);
 }
 
-// ── Load profile JSON ──────────────────────────────────────────────────────
 function loadProfileJSON(file) {
   const r = new FileReader();
   r.onload = e => {
     try {
       const json = JSON.parse(e.target.result);
       const { objects, extras: ex } = importProfile(json);
-      engine.objects  = objects;
-      engine.selected = null;
-      extras = ex;
+      engine.objects  = objects; engine.selected = null; extras = ex;
       if (json.name) $("profile-name-input").value = json.name;
-      syncSettingControls(ex);
-      syncSpineSlots(ex.spine_layout);
-      engine.redraw();
-      buildObjList();
-      onSelect(null);
-      refreshJson();
+      syncSettingControls(ex); syncSpineSlots(ex.spine_layout);
+      engine.redraw(); buildObjList(); onSelect(null); refreshJson();
       toast(`Profile "${json.name || "??"}" loaded`);
     } catch (err) { toast("Invalid JSON: " + err.message, true); }
   };
@@ -368,12 +631,9 @@ function loadProfileJSON(file) {
 function syncSettingControls(ex) {
   if ($("sel-spine-source") && ex.spine_source) $("sel-spine-source").value = ex.spine_source;
   if ($("sel-cover-fit")    && ex.cover_fit)    $("sel-cover-fit").value    = ex.cover_fit;
-  if ($("inp-source-frac")  && ex.spine_source_frac != null)
-    $("inp-source-frac").value = ex.spine_source_frac;
-  if ($("inp-logo-alpha")   && ex.spine_layout?.logo_alpha != null)
-    $("inp-logo-alpha").value = ex.spine_layout.logo_alpha;
-  if ($("cb-rotate-logos")  && ex.spine_layout?.rotate_logos != null)
-    $("cb-rotate-logos").checked = ex.spine_layout.rotate_logos;
+  if ($("inp-source-frac")  && ex.spine_source_frac != null) $("inp-source-frac").value = ex.spine_source_frac;
+  if ($("inp-logo-alpha")   && ex.spine_layout?.logo_alpha != null) $("inp-logo-alpha").value = ex.spine_layout.logo_alpha;
+  if ($("cb-rotate-logos")  && ex.spine_layout?.rotate_logos != null) $("cb-rotate-logos").checked = ex.spine_layout.rotate_logos;
 }
 
 function syncSpineSlots(sl) {
@@ -384,139 +644,77 @@ function syncSpineSlots(sl) {
   set("sp-bot-w",   sl.bottom?.max_w); set("sp-bot-h",   sl.bottom?.max_h); set("sp-bot-cy",  sl.bottom?.center_y);
 }
 
-// ── UI wiring ──────────────────────────────────────────────────────────────
 function wireUI() {
-  // Template
   const openTpl = () => $("input-template").click();
   $("btn-load-template").addEventListener("click",  openTpl);
   $("btn-load-template2").addEventListener("click", openTpl);
   $("input-template").addEventListener("change", e => loadTemplate(e.target.files[0]));
 
-  // Profile I/O
   $("btn-load-profile").addEventListener("click",  () => $("input-profile").click());
   $("input-profile").addEventListener("change",   e => loadProfileJSON(e.target.files[0]));
   $("btn-export-json").addEventListener("click",  doExportJSON);
   $("btn-export-json2").addEventListener("click", doExportJSON);
   $("btn-export-py").addEventListener("click",    doExportPython);
-  $("btn-copy-json").addEventListener("click",    () => {
-    navigator.clipboard.writeText($("json-preview").textContent);
-    toast("Copied to clipboard");
-  });
+  $("btn-copy-json").addEventListener("click",    () => { navigator.clipboard.writeText($("json-preview").textContent); toast("Copied to clipboard"); });
 
-  // Add objects
   ["logo","marquee","spine","cover"].forEach(t => {
-    $(`btn-add-${t}`)?.addEventListener("click", () => {
-      engine.addObject(t);
-      buildObjList();
-      refreshJson();
-    });
+    $(`btn-add-${t}`)?.addEventListener("click", () => { engine.addObject(t); buildObjList(); refreshJson(); });
   });
 
-  $("btn-remove").addEventListener("click", () => {
-    engine.removeSelected();
-    buildObjList();
-    refreshJson();
-  });
+  $("btn-remove").addEventListener("click", () => { engine.removeSelected(); buildObjList(); refreshJson(); });
 
-  // Grid
   $("cb-show-grid").addEventListener("change",   e => { engine.showGrid    = e.target.checked; engine.redraw(); });
   $("cb-snap-grid").addEventListener("change",   e => { engine.snapToGrid  = e.target.checked; });
-  $("input-grid-size").addEventListener("input", e => {
-    const v = parseInt(e.target.value);
-    if (v > 0) { engine.gridSize = v; engine.redraw(); }
-  });
+  $("input-grid-size").addEventListener("input", e => { const v = parseInt(e.target.value); if (v > 0) { engine.gridSize = v; engine.redraw(); } });
 
-  // Scanlines
   $("cb-scanlines").addEventListener("change", e => document.body.classList.toggle("scanlines", e.target.checked));
 
-  // Zoom
   $("btn-zoom-in").addEventListener("click",  () => engine.setZoom(engine.zoom * 1.25));
   $("btn-zoom-out").addEventListener("click", () => engine.setZoom(engine.zoom * 0.8));
-  $("btn-zoom-fit").addEventListener("click", () => {
-    engine.fitToScreen($("canvas-area").clientWidth, $("canvas-area").clientHeight);
-  });
+  $("btn-zoom-fit").addEventListener("click", () => { engine.fitToScreen($("canvas-area").clientWidth, $("canvas-area").clientHeight); });
 
-  // Property inputs
   ["x","y","width","height"].forEach(key => {
-    $(`prop-${key}`)?.addEventListener("input", e => {
-      engine.setProperty(key, e.target.value);
-      refreshJson();
-      updateQuadDisplay(engine.selected);
-    });
+    $(`prop-${key}`)?.addEventListener("input", e => { engine.setProperty(key, e.target.value); refreshJson(); updateQuadDisplay(engine.selected); });
   });
 
-  // Profile settings
   $("sel-spine-source").addEventListener("change", e => { extras.spine_source = e.target.value; refreshJson(); });
   $("sel-cover-fit").addEventListener("change",    e => { extras.cover_fit    = e.target.value; refreshJson(); });
   $("inp-source-frac").addEventListener("input",   e => { extras.spine_source_frac = parseFloat(e.target.value); refreshJson(); });
-  $("inp-logo-alpha").addEventListener("input",    e => {
-    extras.spine_layout = extras.spine_layout || {};
-    extras.spine_layout.logo_alpha = parseFloat(e.target.value);
-    refreshJson();
-  });
-  $("cb-rotate-logos").addEventListener("change",  e => {
-    extras.spine_layout = extras.spine_layout || {};
-    extras.spine_layout.rotate_logos = e.target.checked;
-    refreshJson();
-  });
+  $("inp-logo-alpha").addEventListener("input",    e => { extras.spine_layout = extras.spine_layout || {}; extras.spine_layout.logo_alpha = parseFloat(e.target.value); refreshJson(); });
+  $("cb-rotate-logos").addEventListener("change",  e => { extras.spine_layout = extras.spine_layout || {}; extras.spine_layout.rotate_logos = e.target.checked; refreshJson(); });
 
-  // Spine slot inputs → extras
-  const spSlot = (id, slot, key) => {
-    $(id)?.addEventListener("input", e => {
-      extras.spine_layout = extras.spine_layout || {};
-      extras.spine_layout[slot] = extras.spine_layout[slot] || {};
-      extras.spine_layout[slot][key] = parseInt(e.target.value);
-      refreshJson();
-    });
-  };
+  const spSlot = (id, slot, key) => { $(id)?.addEventListener("input", e => { extras.spine_layout = extras.spine_layout || {}; extras.spine_layout[slot] = extras.spine_layout[slot] || {}; extras.spine_layout[slot][key] = parseInt(e.target.value); refreshJson(); }); };
   spSlot("sp-game-w","game","max_w");  spSlot("sp-game-h","game","max_h");  spSlot("sp-game-cy","game","center_y");
   spSlot("sp-top-w","top","max_w");    spSlot("sp-top-h","top","max_h");    spSlot("sp-top-cy","top","center_y");
   spSlot("sp-bot-w","bottom","max_w"); spSlot("sp-bot-h","bottom","max_h"); spSlot("sp-bot-cy","bottom","center_y");
 
-  // Drag & drop on canvas area
   $("canvas-area").addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
   $("canvas-area").addEventListener("drop",     e => {
-    e.preventDefault();
-    const file = [...e.dataTransfer.files][0];
-    if (!file) return;
-    if (file.name.endsWith(".json")) loadProfileJSON(file);
-    else loadTemplate(file);
+    e.preventDefault(); const file = [...e.dataTransfer.files][0]; if (!file) return;
+    if (file.name.endsWith(".json")) loadProfileJSON(file); else loadTemplate(file);
   });
 
-  // Profile name → refresh json
   $("profile-name-input").addEventListener("input", refreshJson);
 }
 
-// ── Section toggle ─────────────────────────────────────────────────────────
 function initSections() {
   $$(".section").forEach((s, i) => { if (i < 5) s.classList.add("open"); });
   $$(".section-title").forEach(t => t.addEventListener("click", () => t.parentElement.classList.toggle("open")));
 }
 
-// ── Canvas events ──────────────────────────────────────────────────────────
 function onSelect(obj) {
-  // Property panel
   $("props-title").textContent = obj ? `▸ ${obj.type.toUpperCase()}` : "▸ SELECT AN OBJECT";
   ["x","y","width","height"].forEach(key => {
-    const el = $(`prop-${key}`);
-    if (!el) return;
-    el.disabled = !obj;
-    el.value    = obj ? Math.round(obj[key === "width" ? "w" : key === "height" ? "h" : key]) : "";
+    const el = $(`prop-${key}`); if (!el) return;
+    el.disabled = !obj; el.value = obj ? Math.round(obj[key === "width" ? "w" : key === "height" ? "h" : key]) : "";
   });
-
-  // Show/hide contextual panels
-  $("spine-slots").style.display        = (obj?.type === "spine")  ? "block" : "none";
-  $("cover-quad-panel").style.display   = (obj?.type === "cover")  ? "block" : "none";
+  $("spine-slots").style.display = (obj?.type === "spine") ? "block" : "none";
+  $("cover-quad-panel").style.display = (obj?.type === "cover") ? "block" : "none";
   updateQuadDisplay(obj);
-
-  // Object list highlight
   $$(".obj-item").forEach(el => el.classList.toggle("active", obj && el.dataset.type === obj.type));
 }
 
-function onObjectChange(obj) {
-  onSelect(obj);
-  refreshJson();
-}
+function onObjectChange(obj) { onSelect(obj); refreshJson(); }
 
 function updateQuadDisplay(obj) {
   if (!obj || obj.type !== "cover") return;
@@ -526,89 +724,60 @@ function updateQuadDisplay(obj) {
   $("quad-bl").textContent = `[${Math.round(obj.x)}, ${Math.round(obj.y+obj.h)}]`;
 }
 
-// ── Object list (sidebar) ──────────────────────────────────────────────────
 function buildObjList() {
-  const list = $("obj-list");
-  list.innerHTML = "";
-  if (engine.objects.length === 0) {
-    list.innerHTML = `<div style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);
-      text-align:center;padding:.5rem 0">No objects — add one above</div>`;
-    return;
-  }
+  const list = $("obj-list"); list.innerHTML = "";
+  if (engine.objects.length === 0) { list.innerHTML = `<div style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);text-align:center;padding:.5rem 0">No objects — add one above</div>`; return; }
   engine.objects.forEach(obj => {
     const item = document.createElement("div");
-    item.className = "obj-item" + (engine.selected === obj ? " active" : "");
-    item.dataset.type = obj.type;
-    const color = COLORS[obj.type]?.stroke || "#fff";
-    item.innerHTML = `
-      <div class="obj-swatch swatch-${obj.type}"></div>
-      <span class="obj-name">${obj.type}</span>
-      <span class="obj-coords">${Math.round(obj.x)},${Math.round(obj.y)}</span>`;
-    item.addEventListener("click", () => {
-      engine.selected = obj; engine.redraw(); onSelect(obj);
-    });
+    item.className = "obj-item" + (engine.selected === obj ? " active" : ""); item.dataset.type = obj.type;
+    item.innerHTML = `<div class="obj-swatch swatch-${obj.type}"></div><span class="obj-name">${obj.type}</span><span class="obj-coords">${Math.round(obj.x)},${Math.round(obj.y)}</span>`;
+    item.addEventListener("click", () => { engine.selected = obj; engine.redraw(); onSelect(obj); });
     list.appendChild(item);
   });
 }
 
-// ── JSON preview ───────────────────────────────────────────────────────────
 function refreshJson() {
-  buildObjList();
-  collectExtras();
-  const name    = $("profile-name-input").value || "untitled";
+  buildObjList(); collectExtras();
+  const name = $("profile-name-input").value || "untitled";
   const profile = exportProfile(name, engine.objects, tplImg, extras);
   $("json-preview").textContent = JSON.stringify(profile, null, 2);
 }
 
 function collectExtras() {
-  extras.spine_source      = $("sel-spine-source").value;
-  extras.cover_fit         = $("sel-cover-fit").value;
+  const iv = id => parseInt($(id)?.value) || 0;
+  extras.spine_source = $("sel-spine-source").value; extras.cover_fit = $("sel-cover-fit").value;
   extras.spine_source_frac = parseFloat($("inp-source-frac").value) || 0.20;
-  extras.spine_layout      = extras.spine_layout || {};
-  extras.spine_layout.logo_alpha   = parseFloat($("inp-logo-alpha").value) || 0.85;
+  extras.spine_layout = extras.spine_layout || {};
+  extras.spine_layout.logo_alpha = parseFloat($("inp-logo-alpha").value) || 0.85;
   extras.spine_layout.rotate_logos = $("cb-rotate-logos").checked;
-  extras.spine_layout.game   = { max_w: iv("sp-game-w"), max_h: iv("sp-game-h"), center_y: iv("sp-game-cy") };
-  extras.spine_layout.top    = { max_w: iv("sp-top-w"),  max_h: iv("sp-top-h"),  center_y: iv("sp-top-cy")  };
-  extras.spine_layout.bottom = { max_w: iv("sp-bot-w"),  max_h: iv("sp-bot-h"),  center_y: iv("sp-bot-cy")  };
+  extras.spine_layout.game = { max_w: iv("sp-game-w"), max_h: iv("sp-game-h"), center_y: iv("sp-game-cy") };
+  extras.spine_layout.top = { max_w: iv("sp-top-w"), max_h: iv("sp-top-h"), center_y: iv("sp-top-cy") };
+  extras.spine_layout.bottom = { max_w: iv("sp-bot-w"), max_h: iv("sp-bot-h"), center_y: iv("sp-bot-cy") };
 }
-const iv = id => parseInt($(id)?.value) || 0;
 
-// ── Export ─────────────────────────────────────────────────────────────────
 function doExportJSON() {
-  collectExtras();
-  const name    = $("profile-name-input").value || "untitled";
-  const profile = exportProfile(name, engine.objects, tplImg, extras);
-  downloadFile(JSON.stringify(profile, null, 2), `${name}.json`);
+  collectExtras(); const name = $("profile-name-input").value || "untitled";
+  downloadFile(JSON.stringify(exportProfile(name, engine.objects, tplImg, extras), null, 2), `${name}.json`);
   toast("profile.json exported");
 }
+
 function doExportPython() {
-  collectExtras();
-  const name    = $("profile-name-input").value || "untitled";
-  const profile = exportProfile(name, engine.objects, tplImg, extras);
-  downloadFile(exportPython(profile), `${name}.py`, "text/plain");
+  collectExtras(); const name = $("profile-name-input").value || "untitled";
+  downloadFile(exportPython(exportProfile(name, engine.objects, tplImg, extras)), `${name}.py`, "text/plain");
   toast("Python snippet exported");
 }
 
-// ── Toast ──────────────────────────────────────────────────────────────────
 let _tt = null;
 function toast(msg, err=false) {
   let t = $("_toast");
   if (!t) {
     t = Object.assign(document.createElement("div"), { id:"_toast" });
-    Object.assign(t.style, {
-      position:"fixed",bottom:"1.5rem",left:"50%",transform:"translateX(-50%)",
-      fontFamily:"var(--font-mono)",fontSize:".8rem",padding:".45rem 1.1rem",
-      borderRadius:"4px",zIndex:"9998",transition:"opacity .3s",pointerEvents:"none",
-      whiteSpace:"nowrap",
-    });
+    Object.assign(t.style, { position:"fixed",bottom:"1.5rem",left:"50%",transform:"translateX(-50%)",fontFamily:"var(--font-mono)",fontSize:".8rem",padding:".45rem 1.1rem",borderRadius:"4px",zIndex:"9998",transition:"opacity .3s",pointerEvents:"none",whiteSpace:"nowrap" });
     document.body.appendChild(t);
   }
   t.textContent = msg;
-  t.style.cssText += err
-    ? ";background:rgba(255,43,214,.13);border:1px solid var(--accent2);color:var(--accent2);opacity:1"
-    : ";background:rgba(0,234,255,.1);border:1px solid var(--accent);color:var(--accent);opacity:1";
-  clearTimeout(_tt);
-  _tt = setTimeout(() => t.style.opacity = "0", 2800);
+  t.style.cssText += err ? ";background:rgba(255,43,214,.13);border:1px solid var(--accent2);color:var(--accent2);opacity:1" : ";background:rgba(0,234,255,.1);border:1px solid var(--accent);color:var(--accent);opacity:1";
+  clearTimeout(_tt); _tt = setTimeout(() => t.style.opacity = "0", 2800);
 }
 </script>
 
