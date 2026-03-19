@@ -1,16 +1,7 @@
 """
 core/pipeline.py — Rendering pipeline
 =======================================
-``RenderPipeline`` orchestrates the full processing run:
-
-1. Validate environment.
-2. Collect cover images.
-3. Dispatch workers in parallel.
-4. Print the summary report.
-
-The pipeline is decoupled from the engine and the profile registry —
-it receives a :class:`~core.models.Profile` and delegates all image
-work to ``engine.compositor``.
+``RenderPipeline`` orchestrates the full processing run.
 """
 
 from __future__ import annotations
@@ -21,41 +12,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
 
+from PIL import Image
+
 from core.models import CoverResult, Profile, RenderOptions
 
 log = logging.getLogger("box3d.pipeline")
 
-# Supported input extensions (case-insensitive)
 VALID_EXT: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
 
 class RenderPipeline:
-    """
-    Processes every cover image in *covers_dir* using *profile*.
-
-    Subdirectory structure under *covers_dir* is mirrored in
-    *output_dir*::
-
-        covers/Capcom/sf2.webp  →  output/Capcom/sf2.webp
-
-    Parameters
-    ----------
-    profile:
-        Loaded profile (geometry + layout + template path).
-    covers_dir:
-        Directory containing flat or nested cover images.
-    output_dir:
-        Root output directory.
-    temp_dir:
-        Scratch directory for intermediate files (auto-created).
-    options:
-        Runtime rendering options.
-    logo_paths:
-        Optional ``{"top": Path, "bottom": Path}`` for spine logos.
-    marquees_dir:
-        Optional directory of game marquee images (matched by stem).
-    """
-
     def __init__(
         self,
         profile:      Profile,
@@ -76,15 +42,7 @@ class RenderPipeline:
         self._stats: dict[str, int] = {"ok": 0, "skip": 0, "error": 0, "dry": 0}
         self._lock  = Lock()
 
-    # ------------------------------------------------------------------
-    # Public entry point
-    # ------------------------------------------------------------------
-
     def run(self) -> dict[str, int]:
-        """
-        Execute the pipeline and return the stats dict
-        ``{"ok": N, "skip": N, "error": N, "dry": N}``.
-        """
         t_start = time.perf_counter()
 
         log.info("=" * 62)
@@ -114,9 +72,12 @@ class RenderPipeline:
         total = len(covers)
         log.info("Processing %d cover(s) with %d thread(s)…", total, self.options.workers)
 
+        log.info("Pre-loading profile template into memory...")
+        template_img = Image.open(self.profile.template_path).convert("RGBA")
+
         with ThreadPoolExecutor(max_workers=self.options.workers) as pool:
             futures = {
-                pool.submit(self._process_one, path): path
+                pool.submit(self._process_one, path, template_img): path
                 for path in covers
             }
             done = 0
@@ -134,13 +95,7 @@ class RenderPipeline:
         self._report(total, time.perf_counter() - t_start)
         return self._stats
 
-    # ------------------------------------------------------------------
-    # Per-cover worker
-    # ------------------------------------------------------------------
-
-    def _process_one(self, cover_path: Path) -> CoverResult:
-        """Process a single cover.  Dispatched by the thread pool."""
-        # Deferred import to avoid circular dependency at module load time
+    def _process_one(self, cover_path: Path, template_img: Image.Image) -> CoverResult:
         from engine.compositor import render_cover
         return render_cover(
             cover_path   = cover_path,
@@ -148,14 +103,10 @@ class RenderPipeline:
             profile      = self.profile,
             options      = self.options,
             output_dir   = self.output_dir,
-            temp_dir     = self.temp_dir,
             logo_paths   = self.logo_paths,
             marquees_dir = self.marquees_dir,
+            template_img = template_img,
         )
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _validate(self) -> bool:
         ok = True

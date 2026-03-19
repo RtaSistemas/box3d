@@ -24,8 +24,8 @@
 
   "spine_layout": {
     "game":   { "max_w": 58, "max_h": 232, "center_y": 453 },
-    "top":    { "max_w": 58, "max_h": 87,  "center_y": 150 },
-    "bottom": { "max_w": 58, "max_h": 58,  "center_y": 777 },
+    "top":    { "max_w": 34, "max_h": 40, "center_y": 150 },
+    "bottom": { "max_w": 34, "max_h": 40, "center_y": 777 },
     "logo_alpha": 0.85,
     "rotate_logos": true
   }

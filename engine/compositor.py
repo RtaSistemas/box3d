@@ -4,14 +4,10 @@ engine/compositor.py — Per-cover compositor
 ``render_cover`` is the single entry point called by the pipeline
 for each cover image.  It coordinates spine generation, warping,
 blending, and file I/O.
-
-All image maths lives in ``engine.blending`` and ``engine.perspective``;
-all domain types come from ``core.models``.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 from pathlib import Path
@@ -37,14 +33,12 @@ def render_cover(
     profile:      Profile,
     options:      RenderOptions,
     output_dir:   Path,
-    temp_dir:     Path,
     logo_paths:   dict[str, Path | None],
     marquees_dir: Path,
+    template_img: Image.Image | None = None,
 ) -> CoverResult:
     """
     Render one cover image and write the result to *output_dir*.
-
-    Returns a :class:`~core.models.CoverResult` describing the outcome.
     Thread-safe: no shared mutable state is read or written.
     """
     stem = cover_path.stem
@@ -52,10 +46,6 @@ def render_cover(
 
     rel         = cover_path.relative_to(covers_dir)
     output_path = output_dir / rel.with_suffix(f".{options.output_format}")
-
-    # Unique temp filename to prevent collisions between concurrent workers
-    rel_hash  = hashlib.md5(str(rel).encode()).hexdigest()[:8]
-    spine_tmp = temp_dir / f"_spine_{rel_hash}_{stem}.png"
 
     if options.dry_run:
         log.info("[DRY-RUN] %s", rel)
@@ -71,15 +61,14 @@ def render_cover(
         geom   = _effective_geometry(profile, options)
         layout = _effective_layout(profile, options)
 
-        # Resolve game marquee (matched by stem, any supported extension)
         game_logo = _find_asset(marquees_dir, stem)
         if game_logo:
             log.debug("%s: marquee → %s", rel, game_logo.name)
 
-        # Build the flat 2-D spine strip
         cover_img = Image.open(cover_path).convert("RGBA")
         log.debug("%s: cover %s", rel, cover_img.size)
 
+        # Build the flat 2-D spine strip (kept entirely in memory)
         spine_strip = build_spine(
             cover        = cover_img,
             geom         = geom,
@@ -90,18 +79,17 @@ def render_cover(
             top_logo     = logo_paths.get("top"),
             bottom_logo  = logo_paths.get("bottom"),
         )
-        spine_strip.save(str(spine_tmp), "PNG")
 
         # Composite the final 3-D box
         result = _composite(
             template_path = profile.template_path,
-            cover_path    = cover_path,
-            spine_path    = spine_tmp,
+            cover_img     = cover_img,
+            spine_img     = spine_strip,
             geom          = geom,
             rgb_matrix    = options.rgb_matrix,
+            template_img  = template_img,
         )
 
-        # Save
         ext = output_path.suffix.lower()
         if ext == ".webp":
             result.save(str(output_path), "WEBP", quality=92, method=4)
@@ -118,9 +106,6 @@ def render_cover(
         log.error("✘  %s: %s", rel, msg, exc_info=True)
         return CoverResult(stem=stem, status="error", elapsed=elapsed, error=msg)
 
-    finally:
-        spine_tmp.unlink(missing_ok=True)
-
 
 # ---------------------------------------------------------------------------
 # Composite pipeline
@@ -128,14 +113,20 @@ def render_cover(
 
 def _composite(
     template_path: Path,
-    cover_path:    Path,
-    spine_path:    Path,
+    cover_img:     Image.Image,
+    spine_img:     Image.Image,
     geom,
     rgb_matrix:    str | None,
+    template_img:  Image.Image | None = None,
 ) -> Image.Image:
     """Five-step compositing pipeline (spine → cover → screen → dstin → save)."""
-    template = Image.open(template_path).convert("RGBA")
-    tw, th   = template.size
+    
+    if template_img is not None:
+        template = template_img
+    else:
+        template = Image.open(template_path).convert("RGBA")
+        
+    tw, th = template.size
 
     colored_template = (
         apply_color_matrix(template, rgb_matrix)
@@ -143,15 +134,13 @@ def _composite(
     )
 
     # Step 1 — Spine warp
-    spine_src    = resize_for_fit(Image.open(spine_path).convert("RGBA"),
-                                  geom.spine_w, geom.spine_h, "stretch")
+    spine_src    = resize_for_fit(spine_img, geom.spine_w, geom.spine_h, "stretch")
     spine_warped = warp(spine_src, tw, th, geom.spine_quad.as_list())
     canvas       = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     canvas       = Image.alpha_composite(canvas, spine_warped)
 
     # Step 2 — Cover warp
-    cover_src    = resize_for_fit(Image.open(cover_path).convert("RGBA"),
-                                  geom.cover_w, geom.cover_h, geom.cover_fit)
+    cover_src    = resize_for_fit(cover_img, geom.cover_w, geom.cover_h, geom.cover_fit)
     cover_warped = warp(cover_src, tw, th, geom.cover_quad.as_list())
     canvas       = Image.alpha_composite(canvas, cover_warped)
 
@@ -208,8 +197,6 @@ def parse_rgb_str(rgb_str: str) -> str | None:
     """
     Convert ``"R,G,B"`` to the diagonal matrix string used by
     :func:`~engine.blending.apply_color_matrix`.
-
-    Returns None on error (negative values, wrong count, etc.).
     """
     normalised = rgb_str.replace(";", ",")
     try:

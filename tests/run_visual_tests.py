@@ -235,7 +235,6 @@ def _render(v: Variant, output_dir: Path, registry: ProfileRegistry) -> VariantR
             layout = dataclasses.replace(layout, rotate_logos=v.rotate_logos)
 
         cover_path    = ASSETS / "cover.webp"
-        spine_tmp     = output_dir / f"_tmp_{v.id}.png"
         out_path      = output_dir / f"{v.id}.{v.fmt}"
 
         cover = Image.open(cover_path).convert("RGBA")
@@ -254,12 +253,12 @@ def _render(v: Variant, output_dir: Path, registry: ProfileRegistry) -> VariantR
             top_logo     = top_logo,
             bottom_logo  = bottom_logo,
         )
-        strip.save(str(spine_tmp), "PNG")
 
+        # OOM/Disk I/O Hardening: Passes Image.Image objects directly to _composite
         result = _composite(
             template_path = profile.template_path,
-            cover_path    = cover_path,
-            spine_path    = spine_tmp,
+            cover_img     = cover,
+            spine_img     = strip,
             geom          = geom,
             rgb_matrix    = v.rgb_matrix,
         )
@@ -277,8 +276,6 @@ def _render(v: Variant, output_dir: Path, registry: ProfileRegistry) -> VariantR
         import traceback
         elapsed = time.perf_counter() - t0
         return VariantResult(v, ok=False, elapsed=elapsed, error=traceback.format_exc())
-    finally:
-        (output_dir / f"_tmp_{v.id}.png").unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

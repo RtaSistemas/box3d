@@ -8,14 +8,6 @@ Each profile lives in its own subdirectory and must contain:
     profiles/<name>/
         profile.json     ← geometry + layout JSON
         template.png     ← RGBA box template
-
-Usage::
-
-    registry = ProfileRegistry("profiles/")
-    registry.load()
-    profile = registry.get("mvs")
-    for name in registry.names():
-        print(name)
 """
 
 from __future__ import annotations
@@ -25,7 +17,7 @@ import logging
 import re
 from pathlib import Path
 
-# Relative imports to fix packaging resolution
+# Fix: Importação relativa para garantir portabilidade do pacote
 from .models import (
     CoverFit, LogoSlot, Profile, ProfileGeometry, Quad,
     SpineLayout, SpineSource,
@@ -50,20 +42,7 @@ class ProfileRegistry:
         self._dir     = Path(profiles_dir)
         self._profiles: dict[str, Profile] = {}
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def load(self) -> "ProfileRegistry":
-        """
-        Scan the profiles directory and load every valid profile.
-
-        Subdirectories that contain both ``profile.json`` and
-        ``template.png`` are treated as profiles.  Others are silently
-        skipped.
-
-        Returns self for chaining.
-        """
         if not self._dir.is_dir():
             raise ProfileError(f"Profiles directory not found: {self._dir}")
 
@@ -73,12 +52,14 @@ class ProfileRegistry:
                 continue
             json_path     = entry / "profile.json"
             template_path = entry / "template.png"
+            
             if not json_path.exists():
                 log.debug("Skipping %s — no profile.json", entry.name)
                 continue
             if not template_path.exists():
                 log.warning("Skipping %s — no template.png", entry.name)
                 continue
+                
             try:
                 profile = _load_profile(entry, json_path)
                 self._profiles[profile.name] = profile
@@ -89,12 +70,14 @@ class ProfileRegistry:
                 loaded += 1
             except ProfileError as exc:
                 log.warning("Skipping %s — %s", entry.name, exc)
+            except ValueError as exc:
+                # Captura a rejeição de OOM Hardening do models.py
+                log.warning("Skipping %s — Exceeds limits: %s", entry.name, exc)
 
         log.info("Registry: %d profile(s) loaded from %s", loaded, self._dir)
         return self
 
     def get(self, name: str) -> Profile:
-        """Return a loaded profile by name.  Raises KeyError if not found."""
         if name not in self._profiles:
             available = list(self._profiles)
             raise KeyError(
@@ -104,11 +87,9 @@ class ProfileRegistry:
         return self._profiles[name]
 
     def names(self) -> list[str]:
-        """Return the sorted list of loaded profile names."""
         return sorted(self._profiles)
 
     def all(self) -> list[Profile]:
-        """Return all loaded profiles sorted by name."""
         return [self._profiles[n] for n in self.names()]
 
     def __len__(self) -> int:
@@ -123,7 +104,6 @@ class ProfileRegistry:
 # ---------------------------------------------------------------------------
 
 def _load_profile(directory: Path, json_path: Path) -> Profile:
-    """Parse profile.json and return a :class:`Profile`."""
     try:
         data = json.loads(json_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -131,7 +111,7 @@ def _load_profile(directory: Path, json_path: Path) -> Profile:
 
     raw_name = data.get("name", directory.name)
     
-    # Path Traversal Mitigation: Name must be strictly alphanumeric/dash/underscore
+    # Path Traversal Mitigation: Sanitização rigorosa via Regex
     if not isinstance(raw_name, str) or not re.match(r"^[a-zA-Z0-9_-]+$", raw_name):
         raise ProfileError(f"Invalid profile name '{raw_name}' in {json_path}. Name must match ^[a-zA-Z0-9_-]+$")
     name = raw_name
@@ -147,7 +127,6 @@ def _load_profile(directory: Path, json_path: Path) -> Profile:
 
 
 def _parse_geometry(data: dict) -> ProfileGeometry:
-    """Extrai a geometria pura do dicionário, deixando as exceções subirem."""
     tmpl = data["template_size"]
     sp   = data["spine"]
     cv   = data["cover"]
@@ -160,6 +139,7 @@ def _parse_geometry(data: dict) -> ProfileGeometry:
             bl=tuple(int(x) for x in d["bl"]),
         )
 
+    # A validação OOM (8192px) ocorrerá automaticamente no __post_init__
     return ProfileGeometry(
         template_w = int(tmpl["width"]),
         template_h = int(tmpl["height"]),
@@ -176,7 +156,6 @@ def _parse_geometry(data: dict) -> ProfileGeometry:
 
 
 def _parse_layout(data: dict) -> SpineLayout:
-    """Extrai o layout puro do dicionário, aplicando validação estrita de tipo."""
     def _slot(d: dict) -> LogoSlot:
         return LogoSlot(
             max_w    = int(d["max_w"]),
@@ -186,7 +165,7 @@ def _parse_layout(data: dict) -> SpineLayout:
 
     sl = data.get("spine_layout")
     
-    # Validação Zero-Trust (ADR-001): Trata null/ausência com fallback e rejeita tipos anómalos
+    # Validação Zero-Trust (ADR-001)
     if sl is None:
         sl = {}
     elif not isinstance(sl, dict):
