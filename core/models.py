@@ -8,7 +8,7 @@ the core engine, the rendering engine, and the profile registry.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -104,8 +104,21 @@ class ProfileGeometry:
     spine_source:      SpineSource = "left"
     cover_fit:         CoverFit    = "stretch"
 
+    def __post_init__(self):
+        """OOM Hardening Policy Validation"""
+        max_dim = 8192
+        if self.template_w > max_dim or self.template_h > max_dim:
+            raise ValueError(
+                f"Template resolution {self.template_w}x{self.template_h} "
+                f"exceeds hard limit of {max_dim}px."
+            )
+        if self.spine_w > max_dim or self.spine_h > max_dim:
+            raise ValueError("Spine resolution exceeds hard limit.")
+        if self.cover_w > max_dim or self.cover_h > max_dim:
+            raise ValueError("Cover resolution exceeds hard limit.")
 
-@dataclass(frozen=True)
+
+@dataclass
 class SpineLayout:
     """Logo placement on the spine strip (spine-space coordinates)."""
     game:   LogoSlot

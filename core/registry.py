@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
-from core.models import (
+# Relative imports to fix packaging resolution
+from .models import (
     CoverFit, LogoSlot, Profile, ProfileGeometry, Quad,
     SpineLayout, SpineSource,
 )
@@ -127,7 +129,12 @@ def _load_profile(directory: Path, json_path: Path) -> Profile:
     except json.JSONDecodeError as exc:
         raise ProfileError(f"Invalid JSON in {json_path}: {exc}") from exc
 
-    name = data.get("name", directory.name)
+    raw_name = data.get("name", directory.name)
+    
+    # Path Traversal Mitigation: Name must be strictly alphanumeric/dash/underscore
+    if not isinstance(raw_name, str) or not re.match(r"^[a-zA-Z0-9_-]+$", raw_name):
+        raise ProfileError(f"Invalid profile name '{raw_name}' in {json_path}. Name must match ^[a-zA-Z0-9_-]+$")
+    name = raw_name
 
     try:
         geometry = _parse_geometry(data)
@@ -140,25 +147,26 @@ def _load_profile(directory: Path, json_path: Path) -> Profile:
 
 
 def _parse_geometry(data: dict) -> ProfileGeometry:
+    """Extrai a geometria pura do dicionário, deixando as exceções subirem."""
     tmpl = data["template_size"]
     sp   = data["spine"]
     cv   = data["cover"]
 
     def _quad(d: dict) -> Quad:
         return Quad(
-            tl=tuple(d["tl"]),
-            tr=tuple(d["tr"]),
-            br=tuple(d["br"]),
-            bl=tuple(d["bl"]),
+            tl=tuple(int(x) for x in d["tl"]),
+            tr=tuple(int(x) for x in d["tr"]),
+            br=tuple(int(x) for x in d["br"]),
+            bl=tuple(int(x) for x in d["bl"]),
         )
 
     return ProfileGeometry(
-        template_w = tmpl["width"],
-        template_h = tmpl["height"],
-        spine_w    = sp["width"],
-        spine_h    = sp["height"],
-        cover_w    = cv["width"],
-        cover_h    = cv["height"],
+        template_w = int(tmpl["width"]),
+        template_h = int(tmpl["height"]),
+        spine_w    = int(sp["width"]),
+        spine_h    = int(sp["height"]),
+        cover_w    = int(cv["width"]),
+        cover_h    = int(cv["height"]),
         spine_quad = _quad(data["spine_quad"]),
         cover_quad = _quad(data["cover_quad"]),
         spine_source_frac = float(data.get("spine_source_frac", 0.20)),
@@ -168,6 +176,7 @@ def _parse_geometry(data: dict) -> ProfileGeometry:
 
 
 def _parse_layout(data: dict) -> SpineLayout:
+    """Extrai o layout puro do dicionário, aplicando validação estrita de tipo."""
     def _slot(d: dict) -> LogoSlot:
         return LogoSlot(
             max_w    = int(d["max_w"]),
@@ -175,11 +184,18 @@ def _parse_layout(data: dict) -> SpineLayout:
             center_y = int(d["center_y"]),
         )
 
-    sl = data.get("spine_layout", {})
+    sl = data.get("spine_layout")
+    
+    # Validação Zero-Trust (ADR-001): Trata null/ausência com fallback e rejeita tipos anómalos
+    if sl is None:
+        sl = {}
+    elif not isinstance(sl, dict):
+        raise TypeError(f"A chave 'spine_layout' deve ser um objecto/dicionário, recebido: {type(sl).__name__}")
+
     return SpineLayout(
-        game   = _slot(sl.get("game",   {"max_w":80,"max_h":320,"center_y":453})),
-        top    = _slot(sl.get("top",    {"max_w":80,"max_h":120,"center_y":150})),
-        bottom = _slot(sl.get("bottom", {"max_w":80,"max_h":80, "center_y":780})),
+        game   = _slot(sl.get("game",   {"max_w": 80, "max_h": 320, "center_y": 453})),
+        top    = _slot(sl.get("top",    {"max_w": 80, "max_h": 120, "center_y": 150})),
+        bottom = _slot(sl.get("bottom", {"max_w": 80, "max_h": 80,  "center_y": 780})),
         logo_alpha   = float(sl.get("logo_alpha",   0.85)),
         rotate_logos = bool(sl.get("rotate_logos",  True)),
     )
