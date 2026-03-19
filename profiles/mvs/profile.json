@@ -23,7 +23,7 @@
   "cover_fit": "stretch",
 
   "spine_layout": {
-    "game":   { "max_w": 80,  "max_h": 320, "center_y": 465 },
+    "game":   { "max_w": 79, "max_h": 281, "center_y": 465 },
     "top":    { "max_w": 80,  "max_h": 120, "center_y": 155 },
     "bottom": { "max_w": 80,  "max_h": 80,  "center_y": 800 },
     "logo_alpha": 0.85,

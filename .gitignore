@@ -34,3 +34,5 @@ tests/visual_output/
 *.swo
 .DS_Store
 Thumbs.db
+
+*.*
