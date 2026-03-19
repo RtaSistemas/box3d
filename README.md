@@ -25,7 +25,9 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 ```bash
 git clone https://github.com/RtaSistemas/box3d.git
 cd box3d
-pip install -e .
+
+sudo apt update && sudo apt install -y python3.11 python3.11-venv python3.11-dev
+python3.11 -m venv .venv && source .venv/bin/activate && python -m pip install -U pip setuptools wheel && python -m pip install -e .
 
 # Drop covers into data/inputs/covers/
 python cli/main.py render --profile mvs

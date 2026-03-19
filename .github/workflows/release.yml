@@ -1,0 +1,46 @@
+name: Build and Release Executables
+
+on:
+  push:
+    tags:
+      - 'v*' # Dispara quando você cria uma tag como v2.0.0
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            artifact_name: box3d.exe
+            asset_name: box3d-windows-x64.exe
+          - os: ubuntu-latest
+            artifact_name: box3d
+            asset_name: box3d-linux-x64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pillow numpy .
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --onefile --name ${{ matrix.artifact_name }} --add-data "profiles:profiles" cli/main.py
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

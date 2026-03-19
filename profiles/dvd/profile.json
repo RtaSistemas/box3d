@@ -14,8 +14,8 @@
     "br": [72,  878], "bl": [4, 854]
   },
   "cover_quad": {
-    "tl": [72,   26], "tr": [542, 108],
-    "br": [542, 796], "bl": [72,  878]
+    "tl": [72,   26], "tr": [544, 106],
+    "br": [544, 798], "bl": [72,  880]
   },
 
   "spine_source_frac": 0.20,
@@ -24,8 +24,8 @@
 
   "spine_layout": {
     "game":   { "max_w": 58, "max_h": 232, "center_y": 453 },
-    "top":    { "max_w": 58, "max_h": 87,  "center_y": 150 },
-    "bottom": { "max_w": 58, "max_h": 58,  "center_y": 777 },
+    "top":    { "max_w": 34, "max_h": 40, "center_y": 150 },
+    "bottom": { "max_w": 34, "max_h": 40, "center_y": 777 },
     "logo_alpha": 0.85,
     "rotate_logos": true
   }

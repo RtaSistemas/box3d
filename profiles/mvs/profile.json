@@ -10,12 +10,12 @@
   "cover": { "width": 536, "height": 880 },
 
   "spine_quad": {
-    "tl": [0,   58], "tr": [100,  96],
-    "br": [100, 998], "bl": [0,  935]
+    "tl": [0,   58], "tr": [100,  92],
+    "br": [100, 998], "bl": [0,  945]
   },
   "cover_quad": {
-    "tl": [100,  96], "tr": [636,  44],
-    "br": [636, 918], "bl": [100, 998]
+    "tl": [100,  95], "tr": [638,  42],
+    "br": [638, 922], "bl": [100, 998]
   },
 
   "spine_source_frac": 0.20,
@@ -23,9 +23,9 @@
   "cover_fit": "stretch",
 
   "spine_layout": {
-    "game":   { "max_w": 79, "max_h": 281, "center_y": 465 },
-    "top":    { "max_w": 80,  "max_h": 120, "center_y": 155 },
-    "bottom": { "max_w": 80,  "max_h": 80,  "center_y": 800 },
+    "game":   { "max_w": 79,  "max_h": 281, "center_y": 465 },
+    "top":    { "max_w": 64,  "max_h": 80, "center_y": 155 },
+    "bottom": { "max_w": 64,  "max_h": 80, "center_y": 800 },
     "logo_alpha": 0.85,
     "rotate_logos": true
   }

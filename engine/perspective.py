@@ -20,15 +20,6 @@ def solve_coefficients(
     """
     Solve the 8-coefficient perspective transform mapping *src_pts* to
     *dst_pts*.
-
-    PIL uses an **inverse** mapping (destination → source), so the linear
-    system is built with destination as input and source as output.
-
-    Reference: https://stackoverflow.com/a/14178717
-
-    Raises:
-        numpy.linalg.LinAlgError — if the system is singular (degenerate
-        quadrilateral, e.g. all points collinear).
     """
     matrix: list[list[float]] = []
     for (dx, dy), (sx, sy) in zip(dst_pts, src_pts):
@@ -51,12 +42,7 @@ def warp(
     dst_pts:  list[tuple[int, int]],
 ) -> Image.Image:
     """
-    Perspective-warp *src* onto a transparent canvas of
-    (canvas_w × canvas_h), placing the four corners of *src* at *dst_pts*.
-
-    *dst_pts* must be four points in clockwise order: TL, TR, BR, BL.
-
-    Returns an RGBA image.
+    Perspective-warp *src* onto a transparent canvas.
     """
     sw, sh  = src.size
     src_pts = [(0, 0), (sw, 0), (sw, sh), (0, sh)]
@@ -78,13 +64,24 @@ def resize_for_fit(
     """
     Resize *img* to (target_w × target_h) in the requested *mode*,
     always returning RGBA.
-
-    Modes:
-        ``"stretch"`` — force exact dimensions (may alter aspect ratio).
-        ``"fit"``     — preserve aspect ratio, pad with transparency.
-        ``"crop"``    — preserve aspect ratio, crop to centre.
     """
+    # --- OOM Hardening: Clamp estrutural da geometria de destino ---
+    # Se os parâmetros alvo excederem 8192px, aplicamos um scale down
+    # proporcional para proteger a alocação de memória subsequente,
+    # mantendo a integridade matemática da proporção original.
+    max_dim = max(target_w, target_h)
+    if max_dim > 8192:
+        scale_factor = 8192.0 / max_dim
+        target_w = max(1, int(target_w * scale_factor))
+        target_h = max(1, int(target_h * scale_factor))
+    # ---------------------------------------------------------------
+
     img = img.convert("RGBA")
+
+    # --- OOM Hardening: Downscale preventivo da fonte ---
+    if img.width > 8192 or img.height > 8192:
+        img.thumbnail((8192, 8192), Image.BICUBIC)
+    # ----------------------------------------------------
 
     if mode == "stretch":
         if img.size != (target_w, target_h):
