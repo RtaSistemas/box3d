@@ -5,6 +5,42 @@ work was validated by the full test suite (`pytest tests/test_v2.py`) before clo
 
 ---
 
+## Sprint 5 — PyInstaller Readiness & Release Closure
+
+**Scope:** `cli/main.py`, `core/models.py`, `core/pipeline.py`, `engine/blending.py`,
+`run.sh`, `test.sh`, `.github/workflows/release.yml`, `docs/`
+**Status:** Done
+
+### Deliverables
+
+| # | Deliverable | Detail |
+|---|---|---|
+| 5.1 | PyInstaller path split (SUG-005) | Replaced single `_ROOT` with `_bundle_dir()` (read-only assets → `sys._MEIPASS` when frozen) and `_data_dir()` (user-writable → `exe-dir/data` when frozen); all I/O defaults now derive from `_DATA` |
+| 5.2 | Bootstrap on first run (SUG-006) | `_bootstrap_data_dir()` called at startup creates `data/{inputs/covers,inputs/marquees,output/converted,output/temp,output/logs}` idempotently; replaces shell-only bootstrap from `run.sh` |
+| 5.3 | PYTHONPATH corrected (SUG-007) | `run.sh` and `test.sh` fixed from `${SCRIPT_DIR}/src` (non-existent) to `${SCRIPT_DIR}`; redundant `sys.path.insert` removed from `cli/main.py` |
+| 5.4 | Circuit Breaker aligned (SUG-008) | `_CB_MAX_CONSECUTIVE` lowered from 10 to 2 to match MULTI-AI-PROTO-V3.4 HIGH policy; comment documents the percentage guard rationale |
+| 5.5 | ADR-004: alpha semantics documented | `alpha_weighted_screen` uses `np.maximum(dst_alpha, src_alpha)` — confirmed correct; prior docstring was wrong; test replaced with `test_alpha_weighted_screen_alpha_union` verifying both union directions |
+| 5.6 | `cmd_profiles_validate` implemented | Now checks template file existence and OOM dimension bounds per profile; returns exit code 1 on failure |
+| 5.7 | Designer command fixed | Replaced dead `subprocess.call(app.py)` with `webbrowser.open(index.html)`; `release.yml` gains `--add-data "tools:tools"` |
+| 5.8 | `with_logos` domain ghost removed | Field removed from `RenderOptions`; logo control is the caller's responsibility via `logo_paths={}` |
+| 5.9 | Python 3.13 classifier added | `pyproject.toml` classifiers aligned with CI matrix (3.11/3.12/3.13) |
+
+### Acceptance criteria
+
+- All 49 tests pass (`pytest tests/test_v2.py -v`).
+- `python cli/main.py profiles validate` reports per-profile template and geometry status with correct exit codes.
+- `python cli/main.py designer` opens `tools/box3d_designer_pro/index.html` in the default browser without error.
+- Running the compiled PyInstaller executable without `--input`/`--output` flags creates output in `<exe-dir>/data/output/converted/` (not inside `sys._MEIPASS`).
+- `run.sh` and `test.sh` work without installing the package via pip.
+
+### Notes
+
+This sprint closes all blocking items identified in the MULTI-AI-PROTO-V3.4 audit
+(SUG-005 through SUG-008) and completes the hardening cycle started in Sprint 1.
+The codebase is now ready for the `v2.0.0-rc1` tag.
+
+---
+
 ## Sprint 4 — Peripheral Asset Hardening (Spine)
 
 **Scope:** `engine/spine_builder.py`

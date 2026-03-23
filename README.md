@@ -30,6 +30,7 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 - [Box3D Designer Pro](#box3d-designer-pro)
 - [Testing](#testing)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 
 ---
@@ -97,7 +98,57 @@ Standalone executables (no Python required) are available on the
 
 ---
 
-## Quick Start
+### Standalone executable — first run
+
+The executable creates its own data directory next to itself on the first run.
+No setup is required beyond placing your cover images in the right folder.
+
+**Linux / macOS**
+
+```bash
+# Download and make executable
+chmod +x box3d-linux-x64
+
+# First run — data/ tree is created automatically next to the binary
+./box3d-linux-x64 profiles list
+
+# Drop covers into data/inputs/covers/ then render
+cp /path/to/covers/*.webp data/inputs/covers/
+./box3d-linux-x64 render --profile mvs
+# Output appears in data/output/converted/
+```
+
+**Windows**
+
+```powershell
+# First run — data\ tree is created automatically next to the .exe
+.\box3d-windows-x64.exe profiles list
+
+# Drop covers into data\inputs\covers\ then render
+copy C:\path\to\covers\*.webp data\inputs\covers\
+.\box3d-windows-x64.exe render --profile mvs
+# Output appears in data\output\converted\
+```
+
+**Data directory layout created automatically:**
+
+```
+<folder containing the exe>/
+└── data/
+    ├── inputs/
+    │   ├── covers/      ← put your flat cover images here (WebP, PNG, JPG)
+    │   └── marquees/    ← optional per-cover game logos (matched by filename stem)
+    └── output/
+        ├── converted/   ← rendered 3-D box art appears here
+        ├── temp/        ← pipeline scratch space (auto-managed)
+        └── logs/        ← log files when --log-file="" is used
+```
+
+> **Note:** the executable and the `data/` directory must stay in the same folder.
+> The executable writes nothing inside itself — it is safe to run from any location
+> as long as `data/` is a sibling of the binary.
+
+
 
 ```bash
 # 1. Clone and install (see Installation above)
@@ -434,6 +485,13 @@ python tests/run_visual_tests.py
 5. Open a pull request against `main`.
 
 **Adding a new built-in profile** follows the same process as [Creating a Profile](#creating-a-profile). Include the `template.png` and at least one end-to-end test in `TestPipeline`.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history of changes, including
+all additions, fixes, and removals since v1.x.
 
 ---
 

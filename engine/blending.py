@@ -25,7 +25,15 @@ def alpha_weighted_screen(dst: Image.Image, src: Image.Image) -> Image.Image:
         screen  = 1 − (1 − dst_rgb) × (1 − src_rgb)
         result  = dst_rgb × (1 − src_alpha) + screen × src_alpha
 
+<<<<<<< HEAD
     The alpha channel of *dst* is preserved unchanged (see ADR-004).
+=======
+    The output alpha is max(dst_alpha, src_alpha) — a union of both
+    silhouettes.  This is intentional: the template image has opaque pixels
+    outside the spine/cover warp area, and those pixels must survive the
+    subsequent dst_in clip or the template overlay disappears entirely.
+    See ADR-004 for the full rationale.
+>>>>>>> Box3d_RC2.0.0
     """
     dst_arr = np.array(dst, dtype=np.float32)
     src_arr = np.array(src.convert("RGBA"), dtype=np.float32)
