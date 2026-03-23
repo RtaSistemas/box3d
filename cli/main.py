@@ -324,7 +324,6 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         cover_fit     = args.cover_fit,
         spine_source  = args.spine_source,
         no_rotate     = args.no_rotate,
-        with_logos    = not args.no_logos,
         output_format = args.output_format,
         skip_existing = args.skip_existing,
         workers       = max(1, args.workers),

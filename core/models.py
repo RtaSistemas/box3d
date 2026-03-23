@@ -166,7 +166,8 @@ class RenderOptions:
     cover_fit:    CoverFit | None   = None   # overrides profile default
     spine_source: SpineSource | None = None  # overrides profile default
     no_rotate:    bool = False               # force rotate=0 on all slots
-    with_logos:   bool = True
+    # Logo control is handled by the caller (CLI) via logo_paths={} passed to
+    # RenderPipeline — no field needed in the domain model (removed in Sprint 5).
 
     output_format:  OutFormat = "webp"
     skip_existing:  bool      = False
