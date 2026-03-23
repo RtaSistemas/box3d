@@ -23,10 +23,9 @@
   "cover_fit": "stretch",
 
   "spine_layout": {
-    "game":   { "max_w": 80,  "max_h": 320, "center_y": 453 },
-    "top":    { "max_w": 64,  "max_h": 80,  "center_y": 150 },
-    "bottom": { "max_w": 64,  "max_h": 80,  "center_y": 777 },
-    "logo_alpha": 0.85,
-    "rotate_logos": true
+    "game":   { "max_w": 80,  "max_h": 320, "center_y": 453, "rotate": -90 },
+    "top":    { "max_w": 64,  "max_h": 80,  "center_y": 150, "rotate": -90 },
+    "bottom": { "max_w": 64,  "max_h": 80,  "center_y": 777, "rotate": -90 },
+    "logo_alpha": 0.85
   }
 }

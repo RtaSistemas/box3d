@@ -62,10 +62,13 @@ class LogoSlot:
     A named slot on the spine strip where a logo is composited.
 
     Coordinates are in *spine-strip* space (not template space).
+    ``rotate`` is the rotation angle in degrees passed directly to
+    PIL ``Image.rotate`` (negative = clockwise).  Default 0 = no rotation.
     """
-    max_w:    int    # maximum logo width  after optional rotation
+    max_w:    int    # maximum logo width  after rotation
     max_h:    int    # maximum logo height
     center_y: int    # vertical centre in the spine strip (px)
+    rotate:   int = 0  # rotation angle in degrees (PIL convention)
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +128,7 @@ class SpineLayout:
     top:    LogoSlot
     bottom: LogoSlot
 
-    logo_alpha:   float = 0.85
-    rotate_logos: bool  = True
+    logo_alpha: float = 0.85
 
 
 @dataclass
@@ -163,7 +165,7 @@ class RenderOptions:
     rgb_matrix:   str | None = None
     cover_fit:    CoverFit | None   = None   # overrides profile default
     spine_source: SpineSource | None = None  # overrides profile default
-    rotate_logos: bool | None = None         # overrides layout default
+    no_rotate:    bool = False               # force rotate=0 on all slots
     with_logos:   bool = True
 
     output_format:  OutFormat = "webp"

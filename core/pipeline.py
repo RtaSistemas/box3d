@@ -2,6 +2,14 @@
 core/pipeline.py — Rendering pipeline
 =======================================
 ``RenderPipeline`` orchestrates the full processing run.
+
+This module is the **sole I/O boundary** for disk reads.  All image
+assets (covers, logos, marquees, templates) are opened here with
+OOM Hardening applied, then passed as in-memory PIL Image objects
+to the rendering engine.
+
+Circuit Breaker: if consecutive errors exceed 10 or total errors
+exceed 20% of the batch, the pipeline aborts with a critical log.
 """
 
 from __future__ import annotations
@@ -19,6 +27,41 @@ from core.models import CoverResult, Profile, RenderOptions
 log = logging.getLogger("box3d.pipeline")
 
 VALID_EXT: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
+
+# Circuit Breaker thresholds
+_CB_MAX_CONSECUTIVE = 10
+_CB_PCT_THRESHOLD   = 0.20
+
+
+# ---------------------------------------------------------------------------
+# OOM-safe asset loader
+# ---------------------------------------------------------------------------
+
+def _safe_open(path: Path) -> Image.Image:
+    """
+    Open an image from disk and apply OOM Hardening (Lei de Ferro).
+
+    If the image exceeds 8192px on either axis, it is immediately
+    downscaled proportionally before being returned.
+    """
+    img = Image.open(path).convert("RGBA")
+    if img.width > 8192 or img.height > 8192:
+        log.warning("OOM Hardening: downscaling %s (%dx%d → ≤8192px)",
+                    path.name, img.width, img.height)
+        img.thumbnail((8192, 8192), Image.BICUBIC)
+    return img
+
+
+def _find_asset(directory: Path, stem: str) -> Path | None:
+    """Find the first file with *stem* in any supported extension."""
+    if not directory.is_dir():
+        return None
+    stem_l = stem.lower()
+    exts   = {e.lower() for e in VALID_EXT}
+    for f in sorted(directory.iterdir()):
+        if f.is_file() and f.stem.lower() == stem_l and f.suffix.lower() in exts:
+            return f
+    return None
 
 
 class RenderPipeline:
@@ -41,6 +84,36 @@ class RenderPipeline:
         self.marquees_dir = marquees_dir or (profile.root / "assets")
         self._stats: dict[str, int] = {"ok": 0, "skip": 0, "error": 0, "dry": 0}
         self._lock  = Lock()
+
+    # ------------------------------------------------------------------
+    # Pre-load shared assets (logos)
+    # ------------------------------------------------------------------
+
+    def _load_logo(self, key: str) -> Image.Image | None:
+        """Load a logo by key from logo_paths with OOM Hardening."""
+        path = self.logo_paths.get(key)
+        if path is None or not path.exists():
+            return None
+        try:
+            return _safe_open(path)
+        except Exception as exc:
+            log.warning("Cannot open %s logo '%s': %s", key, path, exc)
+            return None
+
+    def _load_game_logo(self, stem: str) -> Image.Image | None:
+        """Find and load a per-cover game marquee with OOM Hardening."""
+        path = _find_asset(self.marquees_dir, stem)
+        if path is None:
+            return None
+        try:
+            return _safe_open(path)
+        except Exception as exc:
+            log.warning("Cannot open game marquee '%s': %s", path, exc)
+            return None
+
+    # ------------------------------------------------------------------
+    # Main run
+    # ------------------------------------------------------------------
 
     def run(self) -> dict[str, int]:
         t_start = time.perf_counter()
@@ -72,12 +145,25 @@ class RenderPipeline:
         total = len(covers)
         log.info("Processing %d cover(s) with %d thread(s)…", total, self.options.workers)
 
+        # --- Pre-load shared assets (once) ---
         log.info("Pre-loading profile template into memory...")
         template_img = Image.open(self.profile.template_path).convert("RGBA")
 
+        log.info("Pre-loading spine logos into memory...")
+        top_logo_img    = self._load_logo("top")
+        bottom_logo_img = self._load_logo("bottom")
+
+        # --- Circuit Breaker state ---
+        consecutive_errors = 0
+        error_threshold    = max(1, int(total * _CB_PCT_THRESHOLD))
+        breaker_tripped    = False
+
         with ThreadPoolExecutor(max_workers=self.options.workers) as pool:
             futures = {
-                pool.submit(self._process_one, path, template_img): path
+                pool.submit(
+                    self._process_one, path, template_img,
+                    top_logo_img, bottom_logo_img
+                ): path
                 for path in covers
             }
             done = 0
@@ -87,24 +173,64 @@ class RenderPipeline:
                 with self._lock:
                     self._stats[result.status] = \
                         self._stats.get(result.status, 0) + 1
+
+                # --- Circuit Breaker logic ---
+                if result.status == "error":
+                    consecutive_errors += 1
+                else:
+                    consecutive_errors = 0
+
+                total_errors = self._stats.get("error", 0)
+
+                if consecutive_errors > _CB_MAX_CONSECUTIVE or \
+                   total_errors > error_threshold:
+                    log.critical(
+                        "CIRCUIT BREAKER ACTIVATED: %d consecutive errors, "
+                        "%d total errors (threshold: %d). Aborting pipeline.",
+                        consecutive_errors, total_errors, error_threshold
+                    )
+                    cancelled = sum(1 for f in futures if f.cancel())
+                    log.critical("Cancelled %d pending task(s).", cancelled)
+                    breaker_tripped = True
+                    break
+
                 pct = int(done / total * 100)
                 print(f"\r  Progress: {done}/{total}  [{pct:3d}%]",
                       end="", flush=True)
 
         print()
-        self._report(total, time.perf_counter() - t_start)
+        self._report(total, time.perf_counter() - t_start, breaker_tripped)
         return self._stats
 
-    def _process_one(self, cover_path: Path, template_img: Image.Image) -> CoverResult:
+    def _process_one(
+        self,
+        cover_path:      Path,
+        template_img:    Image.Image,
+        top_logo_img:    Image.Image | None,
+        bottom_logo_img: Image.Image | None,
+    ) -> CoverResult:
+        """
+        Open one cover (with OOM Hardening), resolve its game marquee,
+        and delegate to the compositor.  All disk reads happen here.
+        """
         from engine.compositor import render_cover
+
+        # --- Cover: disk read + OOM Hardening ---
+        cover_img = _safe_open(cover_path)
+
+        # --- Game marquee: per-cover lookup + OOM Hardening ---
+        game_logo_img = self._load_game_logo(cover_path.stem)
+
         return render_cover(
             cover_path   = cover_path,
+            cover_img    = cover_img,
             covers_dir   = self.covers_dir,
             profile      = self.profile,
             options      = self.options,
             output_dir   = self.output_dir,
-            logo_paths   = self.logo_paths,
-            marquees_dir = self.marquees_dir,
+            game_logo    = game_logo_img,
+            top_logo     = top_logo_img,
+            bottom_logo  = bottom_logo_img,
             template_img = template_img,
         )
 
@@ -141,7 +267,8 @@ class RenderPipeline:
         log.info("Covers found: %d", len(files))
         return files
 
-    def _report(self, total: int, elapsed: float) -> None:
+    def _report(self, total: int, elapsed: float,
+                breaker_tripped: bool = False) -> None:
         ok_count  = self._stats.get("ok",    0)
         err_count = self._stats.get("error", 0)
         processed = ok_count + err_count
@@ -152,6 +279,8 @@ class RenderPipeline:
         log.info("  Skipped   : %d", self._stats.get("skip", 0))
         log.info("  Errors    : %d", err_count)
         log.info("  Dry-run   : %d", self._stats.get("dry",  0))
+        if breaker_tripped:
+            log.info("  Breaker   : TRIPPED — execution was aborted")
         log.info("  Time      : %.2fs  (~%.2fs/image processed)",
                  elapsed, elapsed / max(processed, 1))
         log.info("  Output    : %s", self.output_dir)

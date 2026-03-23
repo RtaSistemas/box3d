@@ -5,7 +5,7 @@ Entry point for all box3d CLI commands.
 
 Commands::
 
-    box3d render   --profile <name> [options]
+    box3d render   --profile <n> [options]
     box3d profiles list
     box3d profiles validate
     box3d designer
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,9 +25,32 @@ sys.path.insert(0, str(_ROOT))
 
 from core.models    import RenderOptions
 from core.registry  import ProfileRegistry, ProfileError
-from engine.compositor import parse_rgb_str
 
 log = logging.getLogger("box3d.cli")
+
+
+# ---------------------------------------------------------------------------
+# RGB parser (migrated from engine/compositor.py — cli-only utility)
+# ---------------------------------------------------------------------------
+
+def parse_rgb_str(rgb_str: str) -> str | None:
+    """
+    Convert ``"R,G,B"`` to the diagonal matrix string used by
+    :func:`~engine.blending.apply_color_matrix`.
+    """
+    normalised = rgb_str.replace(";", ",")
+    try:
+        parts = [float(x.strip()) for x in normalised.split(",")]
+        if len(parts) != 3:
+            raise ValueError(f"expected 3 values, got {len(parts)}")
+        r, g, b = parts
+        for label, val in (("R", r), ("G", g), ("B", b)):
+            if val < 0:
+                raise ValueError(f"channel {label} must be >= 0")
+        return f"{r} 0 0  0 {g} 0  0 0 {b}"
+    except Exception as exc:
+        log.warning("parse_rgb_str: %r — %s — ignored", rgb_str, exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +60,7 @@ log = logging.getLogger("box3d.cli")
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="box3d",
-        description="box3d — Arcade game 3D box art generator (v1.0.3 Zero-Disk-Churn)",
+        description="box3d — Arcade game 3D box art generator (v2.0.0)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -75,7 +97,7 @@ Examples:
     render_p.add_argument("--cover-fit", "-c", choices=["stretch", "fit", "crop"], help="Cover fit mode")
     
     # Logos
-    render_p.add_argument("--no-rotate", "-r", action="store_true", help="Disable 90° CW logo rotation")
+    render_p.add_argument("--no-rotate", "-r", action="store_true", help="Force all logo rotations to 0°")
     render_p.add_argument("--no-logos", "-l", action="store_true", help="Disable all logo overlays")
     render_p.add_argument("--top-logo", type=str, help="Path to top spine logo override")
     render_p.add_argument("--bottom-logo", type=str, help="Path to bottom spine logo override")
@@ -179,7 +201,7 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         rgb_matrix    = rgb_matrix,
         cover_fit     = args.cover_fit,
         spine_source  = args.spine_source,
-        rotate_logos  = False if args.no_rotate else None,
+        no_rotate     = args.no_rotate,
         with_logos    = not args.no_logos,
         output_format = args.output_format,
         skip_existing = args.skip_existing,

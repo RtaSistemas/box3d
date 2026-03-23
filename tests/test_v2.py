@@ -51,16 +51,18 @@ class TestModels:
         assert opts.darken_alpha == 180
         assert opts.output_format == "webp"
         assert opts.workers == 4
+        assert opts.no_rotate is False
 
     def test_spine_layout_logo_slots(self):
         layout = SpineLayout(
-            game   = LogoSlot(max_w=80,  max_h=320, center_y=453),
+            game   = LogoSlot(max_w=80,  max_h=320, center_y=453, rotate=-90),
             top    = LogoSlot(max_w=80,  max_h=120, center_y=150),
             bottom = LogoSlot(max_w=80,  max_h=80,  center_y=780),
         )
         assert layout.game.max_h == 320
+        assert layout.game.rotate == -90
+        assert layout.top.rotate  == 0     # default
         assert layout.logo_alpha  == 0.85
-        assert layout.rotate_logos is True
 
 
 # ===========================================================================
@@ -148,6 +150,7 @@ class TestRegistry:
         assert layout.game.max_w > 0
         assert layout.top.max_h  > 0
         assert 0.0 < layout.logo_alpha <= 1.0
+        assert layout.game.rotate == -90  # per-slot rotation from JSON
 
 
 # ===========================================================================
@@ -302,16 +305,17 @@ class TestSpineBuilder:
         cover = Image.open(ASSETS / "cover.webp").convert("RGBA")
         strip = build_spine(cover, self._geom(), self._layout(),
                             blur_radius=10, darken_alpha=100,
-                            game_logo    = ASSETS / "marquee.webp",
-                            top_logo     = ASSETS / "logo_top.png",
-                            bottom_logo  = ASSETS / "logo_bottom.png")
+                            game_logo    = Image.open(ASSETS / "marquee.webp").convert("RGBA"),
+                            top_logo     = Image.open(ASSETS / "logo_top.png").convert("RGBA"),
+                            bottom_logo  = Image.open(ASSETS / "logo_bottom.png").convert("RGBA"))
         assert strip.mode == "RGBA"
 
     def test_missing_logo_skipped(self):
+        """Passing None for a logo slot is silently accepted."""
         cover = Image.open(ASSETS / "cover.webp").convert("RGBA")
         strip = build_spine(cover, self._geom(), self._layout(),
                             blur_radius=5, darken_alpha=0,
-                            game_logo   = Path("/nonexistent/marquee.png"),
+                            game_logo   = None,
                             top_logo    = None,
                             bottom_logo = None)
         assert strip.mode == "RGBA"
