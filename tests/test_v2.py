@@ -220,12 +220,24 @@ class TestBlending:
         r, _, _, _ = out.getpixel((5,5))
         assert r < 120, "cover was washed out"
 
-    def test_alpha_weighted_screen_preserves_dst_alpha(self):
-        """Alpha do dst deve ser preservado inalterado (ADR-004)."""
+    def test_alpha_weighted_screen_alpha_union(self):
+        """Alpha result is union(dst, src) — ADR-004.
+
+        The pipeline requires this so template pixels outside the
+        spine/cover warp area survive the subsequent dst_in clip.
+        A src with higher alpha MUST elevate the result alpha.
+        """
+        # src alpha (255) > dst alpha (128) → result must be 255
         dst = Image.new("RGBA", (10,10), (100,100,100,128))
         src = Image.new("RGBA", (10,10), (200,200,200,255))
         out = alpha_weighted_screen(dst, src)
-        assert out.getpixel((5,5))[3] == 128
+        assert out.getpixel((5,5))[3] == 255, "alpha union failed: src alpha must win"
+
+        # src alpha (64) < dst alpha (200) → result must stay 200
+        dst2 = Image.new("RGBA", (10,10), (100,100,100,200))
+        src2 = Image.new("RGBA", (10,10), (200,200,200,64))
+        out2 = alpha_weighted_screen(dst2, src2)
+        assert out2.getpixel((5,5))[3] == 200, "alpha union failed: dst alpha must win"
 
     def test_dst_in_white_mask_unchanged(self):
         dst  = Image.new("RGBA", (10,10), (255,0,0,200))

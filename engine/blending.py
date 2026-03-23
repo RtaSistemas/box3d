@@ -25,7 +25,11 @@ def alpha_weighted_screen(dst: Image.Image, src: Image.Image) -> Image.Image:
         screen  = 1 − (1 − dst_rgb) × (1 − src_rgb)
         result  = dst_rgb × (1 − src_alpha) + screen × src_alpha
 
-    The alpha channel of *dst* is preserved unchanged (see ADR-004).
+    The output alpha is max(dst_alpha, src_alpha) — a union of both
+    silhouettes.  This is intentional: the template image has opaque pixels
+    outside the spine/cover warp area, and those pixels must survive the
+    subsequent dst_in clip or the template overlay disappears entirely.
+    See ADR-004 for the full rationale.
     """
     dst_arr = np.array(dst, dtype=np.float32)
     src_arr = np.array(src.convert("RGBA"), dtype=np.float32)
@@ -40,7 +44,11 @@ def alpha_weighted_screen(dst: Image.Image, src: Image.Image) -> Image.Image:
     # Previne cópia redundante usando empty_like antes da atribuição final
     result = np.empty_like(dst_arr)
     result[:, :, :3] = np.clip(blended * 255.0, 0, 255)
-    result[:, :, 3] = dst_arr[:, :, 3]   # ADR-004: alpha do dst preservado
+    # Alpha: union de dst e src para que o template contribua com a sua
+    # própria silhueta ao canvas. Necessário para que dst_in não apague
+    # os pixels do template que estão fora da área warped de spine/cover.
+    # Ver ADR-004 para o raciocínio completo.
+    result[:, :, 3] = np.maximum(dst_arr[:, :, 3], src_arr[:, :, 3])
 
     return Image.fromarray(result.astype(np.uint8), "RGBA")
 
