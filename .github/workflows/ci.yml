@@ -1,23 +1,52 @@
 name: CI
 
+# Trigger on pushes to main and on all PRs targeting main.
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
 
+# Least-privilege token: this workflow only needs to read the repository.
+# Restricting permissions here prevents accidental or malicious writes.
+permissions:
+  contents: read
+
+# Cancel in-flight runs for the same branch/PR when a new commit is pushed.
+# Prevents wasted minutes on stale runs triggered by force-pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+
     strategy:
+      # Run all matrix combinations even if one fails, so the full
+      # compatibility picture is visible in a single CI run.
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
-      - run: pytest tests/test_v2.py -v --tb=short
+          # Cache the pip download cache across runs.
+          # Cuts install time from ~30 s to ~5 s on cache hits.
+          cache: "pip"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install package with dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: pytest tests/test_v2.py -v --tb=short

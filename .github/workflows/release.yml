@@ -1,46 +1,110 @@
-name: Build and Release Executables
+name: Release
 
+# Trigger when a version tag is pushed (e.g. v2.0.0, v2.1.0-rc1).
 on:
   push:
     tags:
-      - 'v*' # Dispara quando você cria uma tag como v2.0.0
+      - "v*"
+
+# Default to read-only; the release job explicitly elevates to contents:write.
+permissions:
+  contents: read
 
 jobs:
-  build:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-        include:
-          - os: windows-latest
-            artifact_name: box3d.exe
-            asset_name: box3d-windows-x64.exe
-          - os: ubuntu-latest
-            artifact_name: box3d
-            asset_name: box3d-linux-x64
+  # ------------------------------------------------------------------
+  # Gate: run the full test suite before building any artifacts.
+  # A release with failing tests is never uploaded.
+  # ------------------------------------------------------------------
+  test:
+    name: Test gate (Python 3.11)
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+          cache: "pip"
 
-      - name: Install dependencies
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install package with dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: pytest tests/test_v2.py -v --tb=short
+
+  # ------------------------------------------------------------------
+  # Build: compile standalone executables and publish the GitHub Release.
+  # Runs only after the test gate passes.
+  # ------------------------------------------------------------------
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+
+    # This job writes to GitHub Releases.
+    permissions:
+      contents: write
+
+    strategy:
+      # Upload every platform even if one build fails, so the Release
+      # page is as complete as possible for partial failures.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            # PyInstaller appends .exe automatically on Windows.
+            build_name: box3d-windows-x64
+            artifact_path: dist/box3d-windows-x64.exe
+          - os: ubuntu-latest
+            build_name: box3d-linux-x64
+            artifact_path: dist/box3d-linux-x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install runtime dependencies and PyInstaller
+        # Install the package (which pulls Pillow + NumPy from pyproject.toml)
+        # plus PyInstaller. Avoids reinstalling Pillow/NumPy a second time.
+        run: python -m pip install pyinstaller .
+
+      - name: Build standalone executable (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller pillow numpy .
+          pyinstaller \
+            --onefile \
+            --strip \
+            --name ${{ matrix.build_name }} \
+            --add-data "profiles:profiles" \
+            cli/main.py
 
-      - name: Build with PyInstaller
+      - name: Build standalone executable (Windows)
+        if: matrix.os == 'windows-latest'
+        # Use semicolon as --add-data separator (required on Windows).
         run: |
-          pyinstaller --onefile --name ${{ matrix.artifact_name }} --add-data "profiles:profiles" cli/main.py
+          pyinstaller `
+            --onefile `
+            --name ${{ matrix.build_name }} `
+            --add-data "profiles;profiles" `
+            cli/main.py
 
-      - name: Upload Release Asset
+      - name: Upload asset to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.artifact_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: ${{ matrix.artifact_path }}
