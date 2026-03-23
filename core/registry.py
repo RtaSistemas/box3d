@@ -5,7 +5,7 @@ Discovers, loads, and caches profiles from the ``profiles/`` directory.
 
 Each profile lives in its own subdirectory and must contain:
 
-    profiles/<name>/
+    profiles/<n>/
         profile.json     ← geometry + layout JSON
         template.png     ← RGBA box template
 """
@@ -19,8 +19,8 @@ from pathlib import Path
 
 # Fix: Importação relativa para garantir portabilidade do pacote
 from .models import (
-    CoverFit, LogoSlot, Profile, ProfileGeometry, Quad,
-    SpineLayout, SpineSource,
+    LogoSlot, Profile, ProfileGeometry, Quad,
+    SpineLayout,
 )
 
 log = logging.getLogger("box3d.registry")
@@ -161,6 +161,7 @@ def _parse_layout(data: dict) -> SpineLayout:
             max_w    = int(d["max_w"]),
             max_h    = int(d["max_h"]),
             center_y = int(d["center_y"]),
+            rotate   = int(d.get("rotate", 0)),
         )
 
     sl = data.get("spine_layout")
@@ -175,6 +176,5 @@ def _parse_layout(data: dict) -> SpineLayout:
         game   = _slot(sl.get("game",   {"max_w": 80, "max_h": 320, "center_y": 453})),
         top    = _slot(sl.get("top",    {"max_w": 80, "max_h": 120, "center_y": 150})),
         bottom = _slot(sl.get("bottom", {"max_w": 80, "max_h": 80,  "center_y": 780})),
-        logo_alpha   = float(sl.get("logo_alpha",   0.85)),
-        rotate_logos = bool(sl.get("rotate_logos",  True)),
+        logo_alpha = float(sl.get("logo_alpha", 0.85)),
     )

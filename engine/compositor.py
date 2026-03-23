@@ -3,7 +3,11 @@ engine/compositor.py — Per-cover compositor
 ============================================
 ``render_cover`` is the single entry point called by the pipeline
 for each cover image.  It coordinates spine generation, warping,
-blending, and file I/O.
+blending, and file output.
+
+All image inputs (cover, logos, template) are received as pre-loaded
+PIL Image objects from the pipeline's Asset Loader layer.  No disk
+*read* I/O occurs in this module.
 """
 
 from __future__ import annotations
@@ -24,21 +28,23 @@ from engine.spine_builder import build_spine
 
 log = logging.getLogger("box3d.compositor")
 
-VALID_EXT: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
-
 
 def render_cover(
     cover_path:   Path,
+    cover_img:    Image.Image,
     covers_dir:   Path,
     profile:      Profile,
     options:      RenderOptions,
     output_dir:   Path,
-    logo_paths:   dict[str, Path | None],
-    marquees_dir: Path,
+    game_logo:    Image.Image | None = None,
+    top_logo:     Image.Image | None = None,
+    bottom_logo:  Image.Image | None = None,
     template_img: Image.Image | None = None,
 ) -> CoverResult:
     """
     Render one cover image and write the result to *output_dir*.
+
+    All image inputs are pre-loaded in-memory PIL Image objects.
     Thread-safe: no shared mutable state is read or written.
     """
     stem = cover_path.stem
@@ -61,11 +67,9 @@ def render_cover(
         geom   = _effective_geometry(profile, options)
         layout = _effective_layout(profile, options)
 
-        game_logo = _find_asset(marquees_dir, stem)
         if game_logo:
-            log.debug("%s: marquee → %s", rel, game_logo.name)
+            log.debug("%s: marquee provided", rel)
 
-        cover_img = Image.open(cover_path).convert("RGBA")
         log.debug("%s: cover %s", rel, cover_img.size)
 
         # Build the flat 2-D spine strip (kept entirely in memory)
@@ -76,8 +80,8 @@ def render_cover(
             blur_radius  = options.blur_radius,
             darken_alpha = options.darken_alpha,
             game_logo    = game_logo,
-            top_logo     = logo_paths.get("top"),
-            bottom_logo  = logo_paths.get("bottom"),
+            top_logo     = top_logo,
+            bottom_logo  = bottom_logo,
         )
 
         # Composite the final 3-D box
@@ -121,10 +125,12 @@ def _composite(
 ) -> Image.Image:
     """Five-step compositing pipeline (spine → cover → screen → dstin → save)."""
     
-    if template_img is not None:
-        template = template_img
-    else:
-        template = Image.open(template_path).convert("RGBA")
+    if template_img is None:
+        raise ValueError(
+            "template_img is required — engine/ must not perform disk I/O. "
+            "Pre-load the template in the pipeline layer."
+        )
+    template = template_img
         
     tw, th = template.size
 
@@ -172,42 +178,11 @@ def _effective_layout(profile: Profile, options: RenderOptions):
     """Return a layout object with any CLI overrides applied."""
     import dataclasses
     layout = profile.layout
-    if options.rotate_logos is not None:
-        layout = dataclasses.replace(layout, rotate_logos=options.rotate_logos)
+    if options.no_rotate:
+        layout = dataclasses.replace(
+            layout,
+            game   = dataclasses.replace(layout.game,   rotate=0),
+            top    = dataclasses.replace(layout.top,     rotate=0),
+            bottom = dataclasses.replace(layout.bottom,  rotate=0),
+        )
     return layout
-
-
-# ---------------------------------------------------------------------------
-# Asset resolution
-# ---------------------------------------------------------------------------
-
-def _find_asset(directory: Path, stem: str) -> Path | None:
-    """Find the first file with *stem* in any supported extension."""
-    if not directory.is_dir():
-        return None
-    stem_l = stem.lower()
-    exts   = {e.lower() for e in VALID_EXT}
-    for f in sorted(directory.iterdir()):
-        if f.is_file() and f.stem.lower() == stem_l and f.suffix.lower() in exts:
-            return f
-    return None
-
-
-def parse_rgb_str(rgb_str: str) -> str | None:
-    """
-    Convert ``"R,G,B"`` to the diagonal matrix string used by
-    :func:`~engine.blending.apply_color_matrix`.
-    """
-    normalised = rgb_str.replace(";", ",")
-    try:
-        parts = [float(x.strip()) for x in normalised.split(",")]
-        if len(parts) != 3:
-            raise ValueError(f"expected 3 values, got {len(parts)}")
-        r, g, b = parts
-        for label, val in (("R", r), ("G", g), ("B", b)):
-            if val < 0:
-                raise ValueError(f"channel {label} must be >= 0")
-        return f"{r} 0 0  0 {g} 0  0 0 {b}"
-    except Exception as exc:
-        log.warning("parse_rgb_str: %r — %s — ignored", rgb_str, exc)
-        return None

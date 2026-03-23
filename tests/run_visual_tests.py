@@ -57,7 +57,7 @@ class Variant:
     darken_alpha: int         = 180
     spine_source: str | None  = None
     cover_fit:    str | None  = None
-    rotate_logos: bool | None = None
+    no_rotate:    bool        = False
     with_logos:   bool        = True
     rgb_matrix:   str | None  = None
     fmt:          str         = "webp"
@@ -122,11 +122,11 @@ MATRIX: list[Variant] = [
 
     # ── 5. Logo rotation ─────────────────────────────────────────────────
     Variant("5_rotate_on",  "5_rotate", "Logos rotated (default)",
-            "90 degrees CW — reads bottom-to-top on a standing box",
+            "Per-slot rotation from profile — reads bottom-to-top on a standing box",
             profile_name="arcade"),
     Variant("5_rotate_off", "5_rotate", "Logos not rotated",
-            "Logos in original orientation",
-            profile_name="arcade", rotate_logos=False),
+            "All logo rotations forced to 0°",
+            profile_name="arcade", no_rotate=True),
 
     # ── 6. Spine source edge ─────────────────────────────────────────────
     Variant("6_source_left",   "6_spine_source", "Source: left (default)",
@@ -231,17 +231,22 @@ def _render(v: Variant, output_dir: Path, registry: ProfileRegistry) -> VariantR
             geom = dataclasses.replace(geom, spine_source=v.spine_source)
         if v.cover_fit is not None:
             geom = dataclasses.replace(geom, cover_fit=v.cover_fit)
-        if v.rotate_logos is not None:
-            layout = dataclasses.replace(layout, rotate_logos=v.rotate_logos)
+        if v.no_rotate:
+            layout = dataclasses.replace(
+                layout,
+                game   = dataclasses.replace(layout.game,   rotate=0),
+                top    = dataclasses.replace(layout.top,     rotate=0),
+                bottom = dataclasses.replace(layout.bottom,  rotate=0),
+            )
 
         cover_path    = ASSETS / "cover.webp"
         out_path      = output_dir / f"{v.id}.{v.fmt}"
 
         cover = Image.open(cover_path).convert("RGBA")
 
-        top_logo    = (ASSETS / "logo_top.png")    if v.with_logos else None
-        bottom_logo = (ASSETS / "logo_bottom.png") if v.with_logos else None
-        game_logo   = (ASSETS / "marquee.webp")    if v.with_logos else None
+        top_logo    = Image.open(ASSETS / "logo_top.png").convert("RGBA")    if v.with_logos else None
+        bottom_logo = Image.open(ASSETS / "logo_bottom.png").convert("RGBA") if v.with_logos else None
+        game_logo   = Image.open(ASSETS / "marquee.webp").convert("RGBA")    if v.with_logos else None
 
         strip = build_spine(
             cover        = cover,
@@ -255,12 +260,14 @@ def _render(v: Variant, output_dir: Path, registry: ProfileRegistry) -> VariantR
         )
 
         # OOM/Disk I/O Hardening: Passes Image.Image objects directly to _composite
+        template_img = Image.open(profile.template_path).convert("RGBA")
         result = _composite(
             template_path = profile.template_path,
             cover_img     = cover,
             spine_img     = strip,
             geom          = geom,
             rgb_matrix    = v.rgb_matrix,
+            template_img  = template_img,
         )
 
         if v.fmt == "webp":
@@ -295,7 +302,7 @@ def _build_badges(v: Variant) -> str:
         _badge("drk " + str(v.darken_alpha)),
         _badge("src " + (v.spine_source or "left")),
         _badge("fit " + (v.cover_fit or "stretch")),
-        _badge("rot " + ("\u2713" if (v.rotate_logos is not False) else "\u2717")),
+        _badge("rot " + ("\u2717" if v.no_rotate else "\u2713")),
         _badge("fmt " + v.fmt),
     ]
     if v.rgb_matrix:

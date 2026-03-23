@@ -2,20 +2,19 @@
 engine/spine_builder.py — 2-D spine strip builder
 ====================================================
 Generates the flat spine strip that is later perspective-warped by the
-compositor.  Operates in pure Pillow — no subprocess calls.
+compositor.  Operates in pure Pillow — no subprocess calls, no disk I/O.
 
 Pipeline:
     1. Sample a colour band from the cover (left / right / center).
     2. Scale to spine dimensions and apply Gaussian blur.
     3. Optional dark overlay.
-    4. Composite logos (top → game → bottom) with optional 90° CW rotation.
+    4. Composite logos (top → game → bottom) with per-slot rotation.
     5. Return the finished RGBA strip.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -31,13 +30,16 @@ def build_spine(
     layout:       SpineLayout,
     blur_radius:  int,
     darken_alpha: int,
-    game_logo:    Path | None,
-    top_logo:     Path | None,
-    bottom_logo:  Path | None,
+    game_logo:    Image.Image | None,
+    top_logo:     Image.Image | None,
+    bottom_logo:  Image.Image | None,
 ) -> Image.Image:
     """
     Build and return the flat 2-D spine strip as an RGBA image of size
     ``(geom.spine_w × geom.spine_h)``.
+
+    All logo arguments are pre-loaded PIL Image objects (or None).
+    No disk I/O occurs in this function.
 
     Args:
         cover:        Front cover already opened as a PIL Image.
@@ -45,9 +47,9 @@ def build_spine(
         layout:       Logo slot positions and opacity.
         blur_radius:  Gaussian blur radius for the background (>= 0).
         darken_alpha: Opacity of the dark overlay (0–255, 0 = disabled).
-        game_logo:    Path to the game marquee, or None.
-        top_logo:     Path to the top spine logo, or None.
-        bottom_logo:  Path to the bottom spine logo, or None.
+        game_logo:    Pre-loaded game marquee image, or None.
+        top_logo:     Pre-loaded top spine logo image, or None.
+        bottom_logo:  Pre-loaded bottom spine logo image, or None.
     """
     sw, sh = geom.spine_w, geom.spine_h
     cw, ch = cover.size
@@ -83,20 +85,19 @@ def build_spine(
         canvas  = Image.alpha_composite(canvas, overlay)
 
     # ------------------------------------------------------------------
-    # 3. Logos: top → game → bottom
+    # 3. Logos: top → game → bottom (per-slot rotation angle)
     # ------------------------------------------------------------------
-    rotate = layout.rotate_logos
-    alpha  = layout.logo_alpha
+    alpha = layout.logo_alpha
 
     canvas = _paste_logo(canvas, top_logo,    sw, sh,
                          layout.top.max_w,    layout.top.max_h,
-                         layout.top.center_y, alpha, rotate)
+                         layout.top.center_y, alpha, layout.top.rotate)
     canvas = _paste_logo(canvas, game_logo,   sw, sh,
                          layout.game.max_w,   layout.game.max_h,
-                         layout.game.center_y, alpha, rotate)
+                         layout.game.center_y, alpha, layout.game.rotate)
     canvas = _paste_logo(canvas, bottom_logo, sw, sh,
                          layout.bottom.max_w, layout.bottom.max_h,
-                         layout.bottom.center_y, alpha, rotate)
+                         layout.bottom.center_y, alpha, layout.bottom.rotate)
     return canvas
 
 
@@ -105,36 +106,34 @@ def build_spine(
 # ---------------------------------------------------------------------------
 
 def _paste_logo(
-    canvas:   Image.Image,
-    path:     Path | None,
-    sw:       int,
-    sh:       int,
-    max_w:    int,
-    max_h:    int,
-    center_y: int,
-    alpha:    float,
-    rotate:   bool,
+    canvas:       Image.Image,
+    logo_img:     Image.Image | None,
+    sw:           int,
+    sh:           int,
+    max_w:        int,
+    max_h:        int,
+    center_y:     int,
+    alpha:        float,
+    rotate_angle: int,
 ) -> Image.Image:
     """
-    Open, optionally rotate, resize and composite one logo onto the canvas.
-    Returns the canvas unchanged on any error (logged as warning).
+    Optionally rotate, resize and composite one pre-loaded logo onto
+    the canvas.  Returns the canvas unchanged if *logo_img* is None.
+
+    No disk I/O — the logo is already an in-memory PIL Image.
     """
-    if path is None:
+    if logo_img is None:
         return canvas
 
-    try:
-        logo = Image.open(path).convert("RGBA")
-    except Exception as exc:
-        log.warning("Cannot open logo '%s': %s", path, exc)
-        return canvas
+    logo = logo_img.copy().convert("RGBA")
 
-    if rotate:
-        logo = logo.rotate(-90, expand=True)
+    if rotate_angle != 0:
+        logo = logo.rotate(rotate_angle, expand=True)
 
     # Fit within (max_w × max_h), never upscale
     lw, lh = logo.size
     if lw == 0 or lh == 0 or max_w <= 0 or max_h <= 0:
-        log.warning("Invalid logo dimensions for '%s' — skipped", path)
+        log.warning("Invalid logo dimensions — skipped")
         return canvas
 
     scale = min(max_w / lw, max_h / lh, 1.0)
