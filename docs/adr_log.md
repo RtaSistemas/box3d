@@ -1,28 +1,127 @@
-Architecture Decision Records (ADR) — Box3D
-ADR-001: Strict Boundary Type Enforcement (Segurança de I/O)
+# Architecture Decision Records — box3d
 
-    Contexto: O carregamento de perfis JSON dinâmicos permitia que falhas de tipagem (como valores null ou tipos inesperados) causassem interrupções críticas (AttributeError).
+This document records significant architectural decisions made during the development of box3d.
+Each entry follows the [MADR](https://adr.github.io/madr/) lightweight format.
 
-    Decisão: É obrigatória a validação explícita de tipos (isinstance) e checagem de nulidade antes de qualquer acesso a métodos de dicionário.
+---
 
-    Consequência: Estabilidade total na descoberta de perfis; um perfil malformado é ignorado sem derrubar o sistema.
+## ADR-001: Strict Boundary Type Enforcement at Profile Load Time
 
-ADR-002: OOM Hardening Policy (Lei de Ferro)
+**Status:** Accepted
 
-    Contexto: O processamento de imagens de alta resolução sem limites causava falhas de memória (Out Of Memory).
+**Date:** 2026-01
 
-    Decisão: Implementação de um teto rígido de 8192px em duas camadas:
+### Context
 
-        Rejeição no carregamento do perfil (ProfileGeometry.__post_init__).
+Profile configuration is loaded at runtime from JSON files contributed by third parties or end
+users. Dynamic JSON parsing offers no type guarantees: a malformed or intentionally crafted
+`profile.json` can inject `null` values, wrong numeric types, or missing keys into the
+application's domain objects. Without explicit validation, these defects surface as cryptic
+`AttributeError` or `TypeError` exceptions deep inside the rendering pipeline — far from the
+actual fault, and with no actionable message.
 
-        Downscale preventivo (thumbnail) em todas as entradas de imagem antes do processamento pesado.
+### Decision
 
-    Consequência: O sistema torna-se resiliente a "bombas de pixels" e assets abusivos.
+All JSON-to-domain-object deserialization in `core/registry.py` must:
 
-ADR-003: Zero-Disk-Churn Architecture
+1. Validate every field with an explicit `isinstance` check before access.
+2. Check for `None` / missing keys before any method call or arithmetic.
+3. Reject the entire profile with a structured log message if any field fails validation.
+4. Never propagate a partially-constructed profile to the engine.
 
-    Contexto: A versão inicial utilizava ficheiros temporários em disco para comunicar entre o spine_builder e o compositor, gerando latência.
+The `ProfileRegistry` catches all deserialization errors per profile, logs them at `WARNING`
+level with the offending key and received type, and continues loading remaining profiles.
 
-    Decisão: Eliminação de I/O intermediário. O pipeline agora transfere objectos PIL.Image.Image diretamente em memória.
+### Consequences
 
-    Consequência: Redução drástica da latência de escrita e proteção da vida útil de unidades SSD.
+- **Positive:** A malformed or adversarial `profile.json` is silently discarded; it cannot crash
+  the batch run or corrupt another cover's output.
+- **Positive:** Error messages produced during profile discovery are diagnostic and actionable.
+- **Positive:** The engine layer receives only fully-validated, type-correct domain objects.
+- **Negative:** Valid profiles with minor typos (e.g., `"width": "703"` as a string) are
+  rejected rather than coerced. Authors must fix the JSON.
+
+---
+
+## ADR-002: OOM Hardening — Hard 8 192 px Ceiling at Two Independent Layers
+
+**Status:** Accepted
+
+**Date:** 2026-01
+
+### Context
+
+Image processing workloads are vulnerable to out-of-memory conditions caused by oversized
+inputs ("pixel bombs"). A single 16 000 × 16 000 RGBA image requires ~1 GiB of RAM; two of
+them in a warp pipeline can trigger kernel OOM-kill on constrained targets (handheld emulation
+devices, 1 GiB containers). The original implementation imposed no upper bounds.
+
+### Decision
+
+Enforce a hard maximum of **8 192 px** in any single dimension at two independent enforcement
+points:
+
+1. **Profile load time** — `ProfileGeometry.__post_init__` raises `ValueError` if
+   `template_size`, `spine`, or `cover` dimensions exceed 8 192 px. An oversized profile
+   template is rejected at startup; it can never reach the engine.
+
+2. **Input image processing** — `engine/perspective.py:resize_for_fit` calls
+   `PIL.Image.thumbnail((8192, 8192))` on every input image before any heavy computation.
+   This is a proportional downscale, so aspect ratio is preserved.
+
+The two layers are independent: a profile within bounds cannot be exploited by providing a
+large input image, and vice versa.
+
+### Consequences
+
+- **Positive:** The system is resilient to pixel-bomb inputs and pathological profile templates.
+- **Positive:** Peak RAM usage is bounded to a predictable range for any input.
+- **Positive:** Defense-in-depth: neither layer alone is a single point of failure.
+- **Negative:** Legitimate ultra-high-resolution workflows (e.g., 10K print masters) are
+  outside the supported envelope. The limit is documented and surfaced with a clear error.
+
+---
+
+## ADR-003: Zero-Disk-Churn — In-Memory Intermediate Images
+
+**Status:** Accepted
+
+**Date:** 2026-02
+
+### Context
+
+The initial implementation wrote intermediate pipeline artifacts (primarily the spine strip) to
+temporary files on disk before the compositor read them back. This introduced:
+
+- Measurable I/O latency proportional to batch size.
+- Unnecessary SSD write amplification in long batch runs (thousands of covers).
+- Fragility: temp-file paths had to be managed, cleaned up, and made unique per worker thread.
+
+### Decision
+
+Eliminate all intermediate disk I/O from the rendering pipeline. All pipeline stages
+communicate via in-memory `PIL.Image.Image` objects passed as function arguments:
+
+```
+build_spine()     → PIL.Image  (in RAM)
+warp(spine_img)   → PIL.Image  (in RAM)
+alpha_screen()    → PIL.Image  (in RAM)
+dst_in()          → PIL.Image  (in RAM)
+image.save(path)  → disk       (final output only)
+```
+
+The template image is a special case: it is loaded once per pipeline run by `RenderPipeline`
+and passed as an argument to every worker (read-only singleton). Workers never write to shared
+state.
+
+### Consequences
+
+- **Positive:** Render throughput increases significantly for large batches (disk I/O removed
+  from the critical path).
+- **Positive:** No temporary file management — no naming collisions, no cleanup failures.
+- **Positive:** Worker threads are stateless; adding more workers scales linearly without
+  synchronization overhead.
+- **Positive:** SSD wear is reduced to a single write per output cover.
+- **Negative:** Peak RAM usage increases proportionally to the number of parallel workers,
+  since each holds a full pipeline of in-memory images. The 8 192 px ceiling from ADR-002
+  bounds this growth.
