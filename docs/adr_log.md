@@ -128,39 +128,53 @@ state.
 
 ---
 
-## ADR-004: Alpha Semantics of alpha_weighted_screen — Preserve dst Alpha
+## ADR-004: Alpha Semantics of alpha_weighted_screen — Union, Not Preservation
 
 **Status:** Accepted
 
-**Date:** 2026-03
+**Date:** 2026-03 (revised after visual regression analysis)
 
 ### Context
 
-`engine/blending.py:alpha_weighted_screen` blends a source image (the coloured template)
-over a destination image (the partially-composited box canvas) using a screen formula
-weighted by the source's alpha channel.  The original implementation computed the output
-alpha channel as `np.maximum(dst_alpha, src_alpha)`.  This caused the alpha of the
-destination to be elevated to the source's alpha wherever the source was more opaque,
-violating the documented contract ("alpha channel of dst is preserved unchanged") and
-silently breaking any downstream operation that relied on the canvas alpha — notably
-`dst_in`, which clips the final silhouette using that alpha.
+`engine/blending.py:alpha_weighted_screen` blends the template image (src) over the
+partially-composited box canvas (dst) using a screen formula weighted by the template's
+alpha.  The compositing pipeline is:
 
-A dedicated test (`test_alpha_weighted_screen_preserves_dst_alpha`) had been commented out
-because it failed under the old implementation.
+1. Warp spine strip onto transparent canvas → `canvas`
+2. Warp cover image onto canvas → `canvas`
+3. **Screen-blend template over canvas** → `canvas` *(this function)*
+4. Build silhouette mask = union(spine_warped, cover_warped, template)
+5. DstIn: clip canvas by the silhouette mask
+
+The template PNG for every profile contains a large number of pixels with non-zero alpha
+that lie **outside** the spine and cover warp quads — for example, the bevelled edges,
+corner reflections, and the 3-D plastic rim of the box art.  After steps 1–2, these
+template pixels have no corresponding opaque area in the canvas (canvas alpha = 0 there).
+
+A first attempt set the output alpha to `dst_arr[:, :, 3]` (preserve dst).  This caused a
+**total visual regression**: the template overlay disappeared completely in all rendered
+outputs.  Root cause: the silhouette mask in step 4 correctly includes the template, but
+after step 3 the canvas alpha at those positions is still 0.  Step 5 (dst_in) multiplies
+canvas alpha by the mask — multiplying 0 by anything is 0 — so every template pixel outside
+the warp area is erased before the final save.
+
+Measurement: the arcade profile template has 454 094 pixels with alpha > 0, of which
+106 642 have canvas alpha = 0 after the warp steps.  Those 106 642 pixels are exactly the
+ones that form the visible 3-D plastic edges of the box.
 
 ### Decision
 
-The output alpha of `alpha_weighted_screen` is set unconditionally to `dst_arr[:, :, 3]`
-(the destination alpha, copied verbatim).  The source alpha is used only as a blend weight
-for the RGB channels, not to modify the alpha channel of the result.
+The output alpha of `alpha_weighted_screen` is `np.maximum(dst_alpha, src_alpha)` — a
+pixel-wise union of the two alpha channels.  This ensures that every pixel where the
+template is opaque is also opaque in the canvas before dst_in executes, so no template
+geometry is lost during the silhouette clip.
 
 ### Consequences
 
-- **Positive:** The documented contract is now enforced and tested.
-- **Positive:** The compositing pipeline is correct end-to-end: `dst_in` receives a canvas
-  whose alpha strictly reflects the warped geometry, not an inflated value from the template.
-- **Positive:** The previously commented test is now active (49 tests pass).
-- **Neutral:** Visual output changes are expected to be imperceptible for fully-opaque
-  templates (alpha = 255 everywhere), since `maximum(255, 255) = 255 = preserved`.  The
-  difference is visible only when the template contains semi-transparent pixels.
-- **Negative:** None identified.
+- **Positive:** Template overlay is fully preserved across all profiles and RGB variants.
+- **Positive:** The semantics are consistent with the silhouette mask construction: both
+  use the union of all contributing layers.
+- **Positive:** Test `test_alpha_weighted_screen_alpha_union` now verifies both directions
+  of the union (src wins when src_alpha > dst_alpha; dst wins otherwise).
+- **Negative:** The function cannot be used as a generic 'preserve-dst-alpha screen'
+  blend.  Its contract is specific to this pipeline and is documented as such.
