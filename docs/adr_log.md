@@ -125,3 +125,42 @@ state.
 - **Negative:** Peak RAM usage increases proportionally to the number of parallel workers,
   since each holds a full pipeline of in-memory images. The 8 192 px ceiling from ADR-002
   bounds this growth.
+
+---
+
+## ADR-004: Alpha Semantics of alpha_weighted_screen — Preserve dst Alpha
+
+**Status:** Accepted
+
+**Date:** 2026-03
+
+### Context
+
+`engine/blending.py:alpha_weighted_screen` blends a source image (the coloured template)
+over a destination image (the partially-composited box canvas) using a screen formula
+weighted by the source's alpha channel.  The original implementation computed the output
+alpha channel as `np.maximum(dst_alpha, src_alpha)`.  This caused the alpha of the
+destination to be elevated to the source's alpha wherever the source was more opaque,
+violating the documented contract ("alpha channel of dst is preserved unchanged") and
+silently breaking any downstream operation that relied on the canvas alpha — notably
+`dst_in`, which clips the final silhouette using that alpha.
+
+A dedicated test (`test_alpha_weighted_screen_preserves_dst_alpha`) had been commented out
+because it failed under the old implementation.
+
+### Decision
+
+The output alpha of `alpha_weighted_screen` is set unconditionally to `dst_arr[:, :, 3]`
+(the destination alpha, copied verbatim).  The source alpha is used only as a blend weight
+for the RGB channels, not to modify the alpha channel of the result.
+
+### Consequences
+
+- **Positive:** The documented contract is now enforced and tested.
+- **Positive:** The compositing pipeline is correct end-to-end: `dst_in` receives a canvas
+  whose alpha strictly reflects the warped geometry, not an inflated value from the template.
+- **Positive:** The previously commented test is now active (49 tests pass).
+- **Neutral:** Visual output changes are expected to be imperceptible for fully-opaque
+  templates (alpha = 255 everywhere), since `maximum(255, 255) = 255 = preserved`.  The
+  difference is visible only when the template contains semi-transparent pixels.
+- **Negative:** None identified.
