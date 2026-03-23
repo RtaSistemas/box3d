@@ -25,7 +25,7 @@ def alpha_weighted_screen(dst: Image.Image, src: Image.Image) -> Image.Image:
         screen  = 1 − (1 − dst_rgb) × (1 − src_rgb)
         result  = dst_rgb × (1 − src_alpha) + screen × src_alpha
 
-    The alpha channel of *dst* is preserved unchanged.
+    The alpha channel of *dst* is preserved unchanged (see ADR-004).
     """
     dst_arr = np.array(dst, dtype=np.float32)
     src_arr = np.array(src.convert("RGBA"), dtype=np.float32)
@@ -40,8 +40,8 @@ def alpha_weighted_screen(dst: Image.Image, src: Image.Image) -> Image.Image:
     # Previne cópia redundante usando empty_like antes da atribuição final
     result = np.empty_like(dst_arr)
     result[:, :, :3] = np.clip(blended * 255.0, 0, 255)
-    result[:, :, 3] = np.maximum(dst_arr[:, :, 3], src_arr[:, :, 3])
-    
+    result[:, :, 3] = dst_arr[:, :, 3]   # ADR-004: alpha do dst preservado
+
     return Image.fromarray(result.astype(np.uint8), "RGBA")
 
 

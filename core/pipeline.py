@@ -8,8 +8,8 @@ assets (covers, logos, marquees, templates) are opened here with
 OOM Hardening applied, then passed as in-memory PIL Image objects
 to the rendering engine.
 
-Circuit Breaker: if consecutive errors exceed 10 or total errors
-exceed 20% of the batch, the pipeline aborts with a critical log.
+Circuit Breaker: if consecutive errors exceed 2 (MULTI-AI-PROTO-V3.4 HIGH policy)
+or total errors exceed 20% of the batch, the pipeline aborts with a critical log.
 """
 
 from __future__ import annotations
@@ -28,8 +28,11 @@ log = logging.getLogger("box3d.pipeline")
 
 VALID_EXT: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
-# Circuit Breaker thresholds
-_CB_MAX_CONSECUTIVE = 10
+# Circuit Breaker thresholds (MULTI-AI-PROTO-V3.4 §3)
+# HIGH severity: 2 consecutive failures → freeze.
+# Percentage guard: abort if total errors exceed 20 % of the batch
+# (protects large runs where 2 consecutive errors could be transient noise).
+_CB_MAX_CONSECUTIVE = 2
 _CB_PCT_THRESHOLD   = 0.20
 
 
