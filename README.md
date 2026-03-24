@@ -130,23 +130,28 @@ copy C:\path\to\covers\*.webp data\inputs\covers\
 # Output appears in data\output\converted\
 ```
 
-**Data directory layout created automatically:**
+**Layout created automatically on the first run:**
 
 ```
 <folder containing the exe>/
+├── box3d-linux-x64          (or box3d-windows-x64.exe)
+├── instructions.txt         ← offline guide, generated once, never overwritten
 └── data/
     ├── inputs/
-    │   ├── covers/      ← put your flat cover images here (WebP, PNG, JPG)
-    │   └── marquees/    ← optional per-cover game logos (matched by filename stem)
+    │   ├── covers/          ← put your flat cover images here (WebP, PNG, JPG)
+    │   └── marquees/        ← optional per-cover game logos (matched by filename stem)
     └── output/
-        ├── converted/   ← rendered 3-D box art appears here
-        ├── temp/        ← pipeline scratch space (auto-managed)
-        └── logs/        ← log files when --log-file="" is used
+        ├── converted/       ← rendered 3-D box art appears here
+        ├── temp/            ← pipeline scratch space (auto-managed)
+        └── logs/            ← log files when --log-file="" is used
 ```
 
 > **Note:** the executable and the `data/` directory must stay in the same folder.
 > The executable writes nothing inside itself — it is safe to run from any location
 > as long as `data/` is a sibling of the binary.
+>
+> `instructions.txt` is written once on the first run and **never overwritten**,
+> so you can annotate or delete it freely.
 
 
 
@@ -265,7 +270,7 @@ box3d/
 │       └── index.html           # Self-contained visual profile editor
 │
 └── tests/
-    ├── test_v2.py               # 49 unit & integration tests
+    ├── test_v2.py               # 52 unit & integration tests
     ├── run_visual_tests.py      # Manual visual verification runner
     └── assets/                  # Fixtures: cover, marquee, logos, templates
 ```
@@ -343,9 +348,12 @@ The MVS profile uses a mostly-transparent template. A DstIn keyed only on the te
 ```
 profiles/
 └── ps2/
-    ├── profile.json    ← required
-    ├── template.png    ← required (RGBA, any size up to 8192 × 8192)
-    └── assets/         ← optional logos and marquees
+    ├── profile.json      ← required
+    ├── template.png      ← required (RGBA, any size up to 8192 × 8192)
+    └── assets/           ← optional logo files (any format in VALID_EXT)
+        ├── logo_top.*    ← system logo — top of spine
+        ├── logo_bottom.* ← system logo — bottom of spine
+        └── logo_game.*   ← fallback game logo (used when no dynamic marquee exists)
 ```
 
 #### Step 2 — Author the profile JSON
@@ -418,9 +426,19 @@ python cli/main.py render --profile ps2 --input tests/assets/ --output /tmp/ps2-
 | `spine_layout.top` | `{max_w, max_h, center_y}` | no | Top-logo slot on the spine |
 | `spine_layout.bottom` | `{max_w, max_h, center_y}` | no | Bottom-logo slot on the spine |
 | `spine_layout.logo_alpha` | float 0–1 | no | Opacity of composited logos (default `0.85`) |
-| `spine_layout.rotate_logos` | bool | no | Rotate logos 90° CW before placement |
+| `spine_layout.game.rotate` | int (degrees) | no | Rotation for game-logo slot (default: `90`) |
+| `spine_layout.top.rotate` | int (degrees) | no | Rotation for top-logo slot (default: `90`) |
+| `spine_layout.bottom.rotate` | int (degrees) | no | Rotation for bottom-logo slot (default: `90`) |
 
 Each quad point is `[x, y]` in pixel coordinates within `template_size`.
+
+#### Logo resolution order
+
+For each cover rendered, the game logo is resolved in this order:
+
+1. `data/inputs/marquees/<cover-stem>.*` — dynamic per-game marquee matched by filename.
+2. `profiles/<name>/assets/logo_game.*` — profile-level fallback (e.g. system manufacturer logo).
+3. *(none)* — spine is rendered without a game logo; no error is raised.
 
 ---
 
@@ -454,7 +472,7 @@ Located at `tools/box3d_designer_pro/index.html` — no server or build step req
 pytest tests/test_v2.py -v
 ```
 
-Expected output: **49 tests passed**.
+Expected output: **52 tests passed**.
 
 ### Test coverage breakdown
 
@@ -466,6 +484,7 @@ Expected output: **49 tests passed**.
 | `TestBlending` | 9 | Screen blend, DstIn, diagonal color matrix, silhouette mask |
 | `TestSpineBuilder` | 7 | Spine generation for all built-in profiles |
 | `TestPipeline` | 8 | End-to-end batch render, dry-run, worker scaling, all profiles |
+| `TestGameLogoFallback` | 3 | Logo resolution: fallback to profile asset, None when absent, dynamic priority |
 
 ### Visual regression tests
 
@@ -481,7 +500,7 @@ python tests/run_visual_tests.py
 1. Fork the repository and create a feature branch.
 2. Run `pip install -e ".[dev]"` to install dev dependencies.
 3. Make your changes and add tests covering the new behaviour.
-4. Run `pytest tests/test_v2.py -v` — all 49 tests must pass.
+4. Run `pytest tests/test_v2.py -v` — all 52 tests must pass.
 5. Open a pull request against `main`.
 
 **Adding a new built-in profile** follows the same process as [Creating a Profile](#creating-a-profile). Include the `template.png` and at least one end-to-end test in `TestPipeline`.
