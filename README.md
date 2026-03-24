@@ -21,9 +21,11 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [CLI Reference](#cli-reference)
+  - [Global options](#global-options)
 - [Architecture](#architecture)
 - [Compositing Pipeline](#compositing-pipeline)
 - [Profiles](#profiles)
+  - [Using Custom Profiles](#using-custom-profiles)
   - [Built-in Profiles](#built-in-profiles)
   - [Creating a Profile](#creating-a-profile)
   - [Profile JSON Schema](#profile-json-schema)
@@ -41,7 +43,8 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 |---|---|
 | **Plugin profiles** | Add new box styles by dropping a directory into `profiles/` — zero code changes |
 | **Parallel rendering** | ThreadPoolExecutor with configurable worker count |
-| **OOM hardening** | Hard 8 192 px ceiling at two independent layers; immune to pixel-bomb inputs |
+| **Batch circuit breaker** | Aborts a batch after 2 consecutive errors or when errors exceed 20% of processed files, preventing cascading failures |
+| **OOM hardening** | Hard 8 192 px ceiling at three independent layers; immune to pixel-bomb inputs |
 | **Zero-disk-churn** | All intermediate data lives in RAM as `PIL.Image` objects — no temp files |
 | **Pure Python** | Pillow ≥ 10 and NumPy ≥ 1.24 only — no external binaries |
 | **Visual editor** | Browser-based Box3D Designer Pro for authoring profiles interactively |
@@ -164,6 +167,11 @@ copy C:\path\to\covers\*.webp data\inputs\covers\
 > `profile.json` and `template.png`. It is immediately available on the next run
 > without restarting or recompiling.
 
+> **Using profiles stored elsewhere:** pass `--profiles-dir /path/to/your/profiles/`
+> to point box3d at any directory on your system. This is the recommended workflow
+> for Windows executable users who want profiles outside the default location
+> (see [Using Custom Profiles](#using-custom-profiles)).
+
 
 
 ```bash
@@ -191,6 +199,22 @@ python cli/main.py render --profile mvs --dry-run --verbose
 
 ## CLI Reference
 
+### Global options
+
+These flags apply to **all commands** and must be placed **before** the subcommand name.
+
+```
+python cli/main.py [global options] <command> [command options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--profiles-dir` | `profiles/` next to the executable | Path to the profiles directory. Override to load profiles from an external location (see [Using Custom Profiles](#using-custom-profiles)). |
+| `--verbose` / `-v` | — | Enable DEBUG-level logging |
+| `--log-file` | — | Write log output to a file (`""` uses `data/output/logs/box3d.log`) |
+
+---
+
 ### `render`
 
 Renders all cover images in the input directory using the specified profile.
@@ -205,9 +229,9 @@ python cli/main.py render --profile <name> [options]
 | `--input` | `-i` | `data/inputs/covers/` | Directory containing source cover images |
 | `--output` | `-o` | `data/output/converted/` | Output directory |
 | `--workers` | `-w` | `4` | Number of parallel render threads |
-| `--blur-radius` | `-b` | `20` | Gaussian blur radius applied to sampled spine background |
-| `--darken` | `-d` | `180` | Spine dark overlay intensity (0 = off, 255 = black) |
-| `--rgb` | | `1.0,1.0,1.0` | RGB channel multipliers applied to the template (e.g. `0.9,0.9,1.1`) |
+| `--blur-radius` | `-b` | `20` | Gaussian blur radius applied to sampled spine background (`>= 0`) |
+| `--darken` | `-d` | `180` | Spine dark overlay intensity (`0`–`255`; 0 = off, 255 = solid black) |
+| `--rgb` | | `1.0,1.0,1.0` | RGB channel multipliers in `R,G,B` comma-separated format (e.g. `0.9,0.9,1.1`). Each value scales the respective channel (`> 1` brightens, `< 1` darkens). Must be `>= 0`. |
 | `--cover-fit` | | *(profile default)* | How the cover fills its quad: `stretch`, `fit`, or `crop` |
 | `--spine-source` | | *(profile default)* | Which edge of the cover to sample for the spine: `left`, `right`, or `center` |
 | `--no-rotate` | | *(profile default)* | Disable 90° CW logo rotation on the spine |
@@ -347,6 +371,42 @@ The MVS profile uses a mostly-transparent template. A DstIn keyed only on the te
 ---
 
 ## Profiles
+
+### Using Custom Profiles
+
+The `--profiles-dir` global flag lets you load profiles from any directory, not just the default `profiles/` folder next to the executable.
+
+**When is this useful?**
+
+- Running the **Windows or Linux executable** and wanting profiles in a separate folder
+- Managing **multiple profile sets** for different systems without mixing them
+- Using profiles on a **network drive** or shared storage
+
+**Workflow:**
+
+```bash
+# 1. Create your external profiles directory
+mkdir ~/my-box3d-profiles
+
+# 2. Copy an existing profile as a starting point
+cp -r profiles/mvs ~/my-box3d-profiles/ps2
+
+# 3. Edit ~/my-box3d-profiles/ps2/profile.json and template.png as needed
+
+# 4. Render using the external directory
+python cli/main.py --profiles-dir ~/my-box3d-profiles render --profile ps2
+```
+
+**Windows executable:**
+
+```powershell
+.\box3d-windows-x64.exe --profiles-dir C:\MyProfiles render --profile ps2
+```
+
+> Profiles inside `--profiles-dir` are discovered by the same filesystem scan as built-in
+> profiles. All rules apply: each subdirectory needs `profile.json` and `template.png`.
+
+---
 
 ### Built-in Profiles
 

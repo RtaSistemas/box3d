@@ -220,6 +220,21 @@ FILE NAMING CONVENTIONS
                   logo_top.<ext>
                   logo_bottom.<ext>
 
+GLOBAL OPTIONS
+--------------
+
+  These flags apply to ALL commands and must be placed BEFORE the subcommand.
+
+  box3d [global options] <command> [command options]
+
+      --profiles-dir <dir>   Profiles directory to load from
+                             Default: profiles/ next to the executable
+                             Use this to load profiles from any external path.
+                             Example: box3d --profiles-dir ~/my-profiles render -p ps2
+
+      --verbose / -v         Enable DEBUG-level logging
+      --log-file  <path>     Write log to file (pass "" for default location)
+
 RENDER COMMAND — ALL OPTIONS
 -----------------------------
 
@@ -236,9 +251,11 @@ RENDER COMMAND — ALL OPTIONS
     -f, --output-format <fmt>  Output format: webp (default) | png
 
   SPINE APPEARANCE
-    -b, --blur-radius <n>      Gaussian blur on spine background  (default: 20)
+    -b, --blur-radius <n>      Gaussian blur on spine background  (default: 20, must be >= 0)
     -d, --darken      <n>      Dark overlay intensity 0–255       (default: 180)
-        --rgb <R,G,B>          RGB channel multipliers            (default: 1.0,1.0,1.0)
+        --rgb <R,G,B>          RGB channel multipliers, comma-separated (default: 1.0,1.0,1.0)
+                               Example: --rgb 1.1,1.0,0.9  (warm tone)
+                               Values > 1 brighten, < 1 darken. Must be >= 0.
         --spine-source <edge>  Cover edge to sample: left | right | center
         --cover-fit    <mode>  Cover scaling: stretch | fit | crop
 
@@ -303,6 +320,29 @@ ADDING A NEW PROFILE
        box3d render -p myprofile --dry-run --verbose
 
 The profile is available immediately — no restart required.
+
+EXTERNAL / CUSTOM PROFILES
+---------------------------
+
+  You can store profiles anywhere on your system and point box3d to them
+  using the --profiles-dir global flag:
+
+    box3d --profiles-dir /path/to/my-profiles render -p myprofile
+
+  This is useful when:
+  - You want profiles on a shared or network drive
+  - You are using the standalone executable and prefer to keep profiles
+    in a separate folder that survives updates
+  - You maintain multiple profile sets for different systems
+
+  Copy a built-in profile as a starting point:
+
+    cp -r profiles/mvs /path/to/my-profiles/ps2
+    # edit /path/to/my-profiles/ps2/profile.json and template.png
+    box3d --profiles-dir /path/to/my-profiles render -p ps2
+
+  Windows example:
+    box3d-windows-x64.exe --profiles-dir C:\\MyProfiles render -p ps2
 """
 
     try:
@@ -358,7 +398,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   box3d render -p mvs
-  box3d render -p arcade -w 8 -R "1.15 0 0  0 1.0 0  0 0 0.85"
+  box3d render -p arcade -w 8 --rgb 1.1,1.0,0.9
+  box3d --profiles-dir ~/my-profiles render -p ps2
   box3d profiles list
   box3d designer
 """
