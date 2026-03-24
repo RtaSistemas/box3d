@@ -1,0 +1,572 @@
+--- a/cli/main.py
++++ b/cli/main.py
+@@ -23,12 +23,20 @@
+ and to ``<project root>/data`` during normal Python execution.  This
+ directory is **never inside _MEIPASS**, so output files survive after the
+ process exits and the temp extraction directory is destroyed.
++
++``_PROFILES`` — user-editable profiles directory, populated from the
++bundle on the first run via ``_bootstrap_profiles()``.  Resolves to
++``<directory of the executable>/profiles`` in a frozen bundle and to
++``<project root>/profiles`` in development.  New built-in profiles added
++in a later release are copied automatically; existing profiles are never
++overwritten, preserving user edits.
+ """
+ 
+ from __future__ import annotations
+ 
+ import argparse
+ import logging
++import shutil
+ import subprocess
+ import sys
+ import webbrowser
+@@ -101,6 +109,208 @@
+         (_DATA / sub).mkdir(parents=True, exist_ok=True)
+ 
+ 
++def _bootstrap_profiles() -> Path:
++    """Ensure an editable profiles/ directory exists next to the executable.
++
++    In a frozen PyInstaller bundle:
++      - Destination: ``<exe-dir>/profiles/``  (persistent, user-editable)
++      - Source:      ``sys._MEIPASS/profiles/``  (read-only, inside the bundle)
++      - First run:   the entire profiles/ tree is copied from the bundle.
++      - Later runs:  only profile directories not yet present are added.
++                     Existing profiles are **never overwritten**, preserving
++                     any user edits to ``profile.json``, ``template.png``, or
++                     ``assets/``.
++
++    In development (not frozen):
++      - Returns ``<project_root>/profiles/`` directly — no copying needed.
++
++    Returns the path that should be used as the default ``--profiles-dir``.
++    """
++    if not getattr(sys, "frozen", False):
++        return _BUNDLE / "profiles"          # dev: already on disk, editable
++
++    dest = Path(sys.executable).parent / "profiles"
++    src  = _BUNDLE / "profiles"              # sys._MEIPASS/profiles/
++
++    if not dest.exists():
++        # First run — copy the full bundled profiles/ tree
++        shutil.copytree(str(src), str(dest))
++        log_bootstrap = logging.getLogger("box3d.cli")
++        log_bootstrap.info("profiles/ initialised at %s", dest)
++    else:
++        # Subsequent runs — add any new built-in profiles, skip existing ones
++        log_bootstrap = logging.getLogger("box3d.cli")
++        for profile_src in src.iterdir():
++            if not profile_src.is_dir():
++                continue
++            profile_dest = dest / profile_src.name
++            if not profile_dest.exists():
++                shutil.copytree(str(profile_src), str(profile_dest))
++                log_bootstrap.info("New built-in profile added: %s", profile_src.name)
++
++    return dest
++
++
++_PROFILES = _bootstrap_profiles()   # editable profiles/ — next to the exe
++
++
++# ---------------------------------------------------------------------------
++# Bootstrap — instructions.txt on first run
++# ---------------------------------------------------------------------------
++
++def _bootstrap_instructions() -> None:
++    """Write instructions.txt next to the executable on first run only.
++
++    The file is never overwritten — the user may edit or delete it freely.
++    In development mode the file is written to the project root (harmless;
++    add it to .gitignore if unwanted).
++    """
++    dest = _DATA.parent / "instructions.txt"
++    if dest.exists():
++        return
++
++    version = "2.0.0"
++
++    content = f"""\
++box3d v{version} — Quick-Start Guide
++{"=" * 52}
++
++Generated automatically on first run. Edit freely — this file is never
++overwritten by the application.
++
++FOLDER STRUCTURE
++----------------
++
++  <this folder>/
++  ├── box3d-linux-x64   (or box3d-windows-x64.exe)
++  ├── instructions.txt  ← this file
++  ├── profiles/         ← plugin profiles (edit freely, never overwritten)
++  │   ├── mvs/
++  │   │   ├── profile.json      geometry + spine layout
++  │   │   ├── template.png      RGBA box art template
++  │   │   └── assets/
++  │   │       ├── logo_top.png       system logo — top of spine
++  │   │       ├── logo_bottom.png    system logo — bottom of spine
++  │   │       └── logo_game.png      fallback game logo (optional)
++  │   ├── arcade/  (same structure)
++  │   └── dvd/     (same structure)
++  └── data/
++      ├── inputs/
++      │   ├── covers/       ← PUT YOUR COVER IMAGES HERE
++      │   └── marquees/     ← per-game logos (matched by filename stem)
++      └── output/
++          ├── converted/    ← rendered 3-D box art appears here
++          ├── temp/         ← auto-managed scratch space
++          └── logs/         ← log files (use --log-file "")
++
++FILE NAMING CONVENTIONS
++-----------------------
++
++  Cover images:   any name, any supported format
++                  (WebP, PNG, JPG, JPEG, BMP, TIFF)
++
++  Marquees:       <cover-stem>.<ext>
++                  Example: cover sf2.webp → marquee sf2.png
++
++  Game logo fallback (inside profile assets/):
++                  logo_game.<ext>
++                  Used when no matching marquee is found in data/inputs/marquees/
++
++  System logos (inside profile assets/):
++                  logo_top.<ext>
++                  logo_bottom.<ext>
++
++RENDER COMMAND — ALL OPTIONS
++-----------------------------
++
++  box3d render --profile <name> [options]
++
++  REQUIRED
++    -p, --profile <name>       Profile to use (mvs | arcade | dvd | custom)
++
++  INPUT / OUTPUT
++    -i, --input   <dir>        Cover images directory
++                               Default: data/inputs/covers/
++    -o, --output  <dir>        Output directory
++                               Default: data/output/converted/
++    -f, --output-format <fmt>  Output format: webp (default) | png
++
++  SPINE APPEARANCE
++    -b, --blur-radius <n>      Gaussian blur on spine background  (default: 20)
++    -d, --darken      <n>      Dark overlay intensity 0–255       (default: 180)
++        --rgb <R,G,B>          RGB channel multipliers            (default: 1.0,1.0,1.0)
++        --spine-source <edge>  Cover edge to sample: left | right | center
++        --cover-fit    <mode>  Cover scaling: stretch | fit | crop
++
++  LOGOS
++        --no-logos             Disable all logo overlays
++        --no-rotate            Force all logo rotations to 0°
++        --top-logo    <file>   Override top spine logo
++        --bottom-logo <file>   Override bottom spine logo
++        --marquees-dir <dir>   Override marquees directory
++
++  EXECUTION
++    -w, --workers  <n>         Parallel render threads  (default: 4)
++    -s, --skip-existing        Skip covers already rendered
++        --dry-run              Validate inputs without writing output
++    -v, --verbose              Enable DEBUG-level logging
++        --log-file  <path>     Write log to file (pass "" for default location)
++
++QUICK EXAMPLES
++--------------
++
++  # Render all covers with the MVS profile
++  box3d render -p mvs
++
++  # Arcade profile, 8 workers, PNG output, warm colour tone
++  box3d render -p arcade -w 8 --output-format png --rgb 1.1,1.0,0.9
++
++  # Preview run — no files written
++  box3d render -p dvd --dry-run --verbose
++
++  # Only process covers not yet rendered
++  box3d render -p mvs --skip-existing
++
++  # Custom spine: strong dark overlay, cool colour shift, crop-fit cover
++  box3d render -p arcade --darken 220 --rgb 0.85,0.9,1.15 --cover-fit crop
++
++OTHER COMMANDS
++--------------
++
++  box3d profiles list       List all available profiles with geometry info
++  box3d profiles validate   Check each profile for missing files / OOM bounds
++  box3d designer            Open the visual profile editor in the browser
++
++ADDING A NEW PROFILE
++--------------------
++
++  1. Create a directory inside profiles/:
++       profiles/myprofile/
++
++  2. Add the required files:
++       profile.json    — geometry and spine layout (see built-in examples)
++       template.png    — RGBA box art template (max 8192 × 8192 px)
++
++  3. Optionally add to profiles/myprofile/assets/:
++       logo_top.png        system logo top of spine
++       logo_bottom.png     system logo bottom of spine
++       logo_game.png       fallback game logo
++
++  4. Use the Designer Pro to adjust quad coordinates:
++       box3d designer
++
++  5. Test the new profile:
++       box3d render -p myprofile --dry-run --verbose
++
++The profile is available immediately — no restart required.
++"""
++
++    try:
++        dest.write_text(content, encoding="utf-8")
++    except OSError as exc:
++        logging.getLogger("box3d.cli").debug(
++            "Could not write instructions.txt: %s", exc
++        )
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -157,8 +367,8 @@
+     # Global arguments
+     parser.add_argument(
+         "--profiles-dir",
+-        default=str(_BUNDLE / "profiles"),
+-        help="Path to profiles directory (default: bundled profiles/)",
++        default=str(_PROFILES),
++        help="Path to profiles directory (default: profiles/ next to the executable)",
+     )
+     parser.add_argument("--verbose", "-v", action="store_true",
+                         help="Enable debug logging")
+@@ -398,6 +608,8 @@
+ 
+ def main() -> None:
+     _bootstrap_data_dir()          # create data/ tree if absent (idempotent)
++    _bootstrap_instructions()      # write instructions.txt on first run only
++    # _PROFILES already populated at import time via _bootstrap_profiles()
+ 
+     parser = build_parser()
+     args   = parser.parse_args()
+--- a/core/pipeline.py
++++ b/core/pipeline.py
+@@ -104,15 +104,32 @@
+             return None
+ 
+     def _load_game_logo(self, stem: str) -> Image.Image | None:
+-        """Find and load a per-cover game marquee with OOM Hardening."""
++        """Find and load the per-cover game logo with OOM Hardening.
++
++        Resolution order
++        ----------------
++        1. <marquees_dir>/<stem>.*  — dynamic per-game marquee.
++        2. <profile>/assets/logo_game.*  — profile-level fallback logo
++           (e.g. the system manufacturer logo used when no specific marquee
++           exists for the current cover).
++        3. None  — spine rendered without a game logo.
++        """
++        # Stage 1: dynamic marquee matched by cover filename stem
+         path = _find_asset(self.marquees_dir, stem)
++
++        # Stage 2: profile-level fallback — logo_game.* inside assets/
++        if path is None:
++            path = _find_asset(self.profile.root / "assets", "logo_game")
++
+         if path is None:
+             return None
++
+         try:
+             return _safe_open(path)
+         except Exception as exc:
+-            log.warning("Cannot open game marquee '%s': %s", path, exc)
++            log.warning("Cannot open game logo '%s': %s", path, exc)
+             return None
++
+     # ------------------------------------------------------------------
+     # Main run
+     # ------------------------------------------------------------------
+--- a/tests/test_v2.py
++++ b/tests/test_v2.py
+@@ -418,3 +418,61 @@
+         ).run()
+         assert stats["ok"] == 1
+ 
++    def test_game_logo_fallback_uses_profile_asset(self, tmp_path):
++        """When marquees_dir has no match, logo_game.* in profile assets/ is used."""
++        import shutil, dataclasses
++        covers = tmp_path / "covers"; covers.mkdir()
++        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
++
++        # Create a patched profile root with logo_game.webp in assets/
++        assets_dir = tmp_path / "assets"; assets_dir.mkdir()
++        shutil.copy(ASSETS / "marquee.webp", assets_dir / "logo_game.webp")
++        # Also provide template.png at the patched root
++        reg     = ProfileRegistry(PROFILES).load()
++        profile = reg.get("mvs")
++        shutil.copy(profile.root / "template.png", tmp_path / "template.png")
++        patched = dataclasses.replace(profile, root=tmp_path)
++
++        from core.pipeline import RenderPipeline
++        stats = RenderPipeline(
++            profile=patched, covers_dir=covers,
++            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
++            options=RenderOptions(workers=1), logo_paths={},
++            marquees_dir=tmp_path / "empty_marquees",
++        ).run()
++        assert stats["ok"] == 1 and stats["error"] == 0
++
++    def test_game_logo_dynamic_preferred_over_fallback(self, tmp_path):
++        """Dynamic marquee in marquees_dir takes priority over logo_game in assets/."""
++        import shutil
++        covers   = tmp_path / "covers";   covers.mkdir()
++        marquees = tmp_path / "marquees"; marquees.mkdir()
++        shutil.copy(ASSETS / "cover.webp",   covers   / "cover.webp")
++        shutil.copy(ASSETS / "marquee.webp", marquees / "cover.webp")  # stem matches
++
++        from core.pipeline import RenderPipeline
++        stats = RenderPipeline(
++            profile=ProfileRegistry(PROFILES).load().get("mvs"),
++            covers_dir=covers,
++            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
++            options=RenderOptions(workers=1), logo_paths={},
++            marquees_dir=marquees,
++        ).run()
++        assert stats["ok"] == 1
++
++    def test_game_logo_none_when_both_missing(self, tmp_path):
++        """Neither marquee nor logo_game → render succeeds with game_logo=None."""
++        import shutil
++        covers = tmp_path / "covers"; covers.mkdir()
++        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
++
++        from core.pipeline import RenderPipeline
++        stats = RenderPipeline(
++            profile=ProfileRegistry(PROFILES).load().get("mvs"),
++            covers_dir=covers,
++            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
++            options=RenderOptions(workers=1), logo_paths={},
++            marquees_dir=tmp_path / "no_marquees",
++        ).run()
++        # profiles/mvs/assets/ has no logo_game.* — runs fine with None
++        assert stats["ok"] == 1
+--- a/README.md
++++ b/README.md
+@@ -100,8 +100,8 @@
+ 
+ ### Standalone executable — first run
+ 
+-The executable creates its own data directory next to itself on the first run.
+-No setup is required beyond placing your cover images in the right folder.
++On first launch, the executable automatically creates the folder structure it needs
++next to itself — no installer, no configuration required.
+ 
+ **Linux / macOS**
+ 
+@@ -109,7 +109,7 @@
+ # Download and make executable
+ chmod +x box3d-linux-x64
+ 
+-# First run — data/ tree is created automatically next to the binary
++# First run — profiles/ and data/ are created next to the binary
+ ./box3d-linux-x64 profiles list
+ 
+ # Drop covers into data/inputs/covers/ then render
+@@ -121,7 +121,7 @@
+ **Windows**
+ 
+ ```powershell
+-# First run — data\ tree is created automatically next to the .exe
++# First run — profiles\ and data\ are created next to the .exe
+ .\box3d-windows-x64.exe profiles list
+ 
+ # Drop covers into data\inputs\covers\ then render
+@@ -130,23 +130,39 @@
+ # Output appears in data\output\converted\
+ ```
+ 
+-**Data directory layout created automatically:**
++**Full layout created automatically:**
+ 
+ ```
+ <folder containing the exe>/
+-└── data/
+-    ├── inputs/
+-    │   ├── covers/      ← put your flat cover images here (WebP, PNG, JPG)
+-    │   └── marquees/    ← optional per-cover game logos (matched by filename stem)
+-    └── output/
+-        ├── converted/   ← rendered 3-D box art appears here
+-        ├── temp/        ← pipeline scratch space (auto-managed)
+-        └── logs/        ← log files when --log-file="" is used
+-```
+-
+-> **Note:** the executable and the `data/` directory must stay in the same folder.
+-> The executable writes nothing inside itself — it is safe to run from any location
+-> as long as `data/` is a sibling of the binary.
++├── profiles/                    ← editable plugin profiles (copied from bundle)
++│   ├── mvs/
++│   │   ├── profile.json         ← edit to adjust geometry
++│   │   ├── template.png         ← replace with your own box art template
++│   │   └── assets/
++│   │       ├── logo_top.png     ← system logo top of spine
++│   │       ├── logo_bottom.png  ← system logo bottom of spine
++│   │       └── logo_game.png    ← fallback game logo (optional)
++│   ├── arcade/  ...
++│   └── dvd/     ...
++├── data/
++│   ├── inputs/
++│   │   ├── covers/              ← put your flat cover images here (WebP, PNG, JPG)
++│   │   └── marquees/            ← per-game logos matched by filename stem
++│   └── output/
++│       ├── converted/           ← rendered 3-D box art appears here
++│       ├── temp/                ← pipeline scratch space (auto-managed)
++│       └── logs/                ← log files when --log-file="" is used
++└── instructions.txt             ← quick-start guide (generated on first run)
++```
++
++> **Editing profiles:** `profiles/` is yours to modify. Change `profile.json` to
++> adjust geometry, swap `template.png` for a custom box art, or add `logo_game.png`
++> to `assets/` as a system-wide fallback marquee. New built-in profiles released in
++> future versions are added automatically without overwriting your edits.
++
++> **Adding a new profile:** create a subdirectory inside `profiles/` with a
++> `profile.json` and `template.png`. It is immediately available on the next run
++> without restarting or recompiling.
+ 
+ 
+ 
+@@ -254,6 +270,12 @@
+ │
+ ├── profiles/                    # Plugin bundles (JSON + template + assets)
+ │   ├── mvs/                     # Neo Geo MVS cartridge  703×1000
++│   │   ├── profile.json         # Geometry + spine layout
++│   │   ├── template.png         # RGBA box template
++│   │   └── assets/
++│   │       ├── logo_top.png     # System logo — top of spine
++│   │       ├── logo_bottom.png  # System logo — bottom of spine
++│   │       └── logo_game.png    # Fallback game logo (used when no marquee found)
+ │   ├── arcade/                  # Arcade cabinet          665×907
+ │   └── dvd/                     # DVD case                633×907
+ │
+@@ -343,11 +365,17 @@
+ ```
+ profiles/
+ └── ps2/
+-    ├── profile.json    ← required
+-    ├── template.png    ← required (RGBA, any size up to 8192 × 8192)
+-    └── assets/         ← optional logos and marquees
++    ├── profile.json          ← required
++    ├── template.png          ← required (RGBA, any size up to 8192 × 8192)
++    └── assets/               ← optional
++        ├── logo_top.png      ← system logo placed at the top of the spine
++        ├── logo_bottom.png   ← system logo placed at the bottom of the spine
++        └── logo_game.png     ← fallback game logo (used when no marquee found
++                                 in data/inputs/marquees/ for the current cover)
+ ```
+ 
++Supported extensions for all logo files: `.png`, `.webp`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`.
++
+ #### Step 2 — Author the profile JSON
+ 
+ ```json
+@@ -414,14 +442,24 @@
+ | `spine_source_frac` | float | no | Fraction of cover width to sample (default `0.20`) |
+ | `spine_source` | `left\|right\|center` | no | Edge of cover to sample for spine background |
+ | `cover_fit` | `stretch\|fit\|crop` | no | How the cover image fills `cover` dimensions |
+-| `spine_layout.game` | `{max_w, max_h, center_y}` | yes | Game-logo slot on the spine |
+-| `spine_layout.top` | `{max_w, max_h, center_y}` | no | Top-logo slot on the spine |
+-| `spine_layout.bottom` | `{max_w, max_h, center_y}` | no | Bottom-logo slot on the spine |
++| `spine_layout.game` | `{max_w, max_h, center_y, rotate}` | yes | Game-logo slot on the spine |
++| `spine_layout.top` | `{max_w, max_h, center_y, rotate}` | no | Top-logo slot on the spine |
++| `spine_layout.bottom` | `{max_w, max_h, center_y, rotate}` | no | Bottom-logo slot on the spine |
+ | `spine_layout.logo_alpha` | float 0–1 | no | Opacity of composited logos (default `0.85`) |
+-| `spine_layout.rotate_logos` | bool | no | Rotate logos 90° CW before placement |
++| `spine_layout.*.rotate` | int (degrees) | no | Rotation angle per slot in degrees (PIL convention: negative = CW). Default `0`. |
+ 
+ Each quad point is `[x, y]` in pixel coordinates within `template_size`.
+ 
++#### Logo resolution order
++
++For each cover, the game logo on the spine is resolved in this order:
++
++1. `data/inputs/marquees/<cover-stem>.*` — dynamic per-game marquee matched by filename.
++2. `profiles/<n>/assets/logo_game.*` — profile-level fallback (e.g. system manufacturer logo).
++3. None — spine is rendered without a game logo.
++
++The `--no-logos` flag disables all logo rendering (game, top, and bottom).
++
+ ---
+ 
+ ## Box3D Designer Pro
+--- a/docs/sprint_log.md
++++ b/docs/sprint_log.md
+@@ -3,6 +3,30 @@
+ Delivery tracking for the v2.0.0 hardening cycle. Each sprint had a single focused scope;
+ work was validated by the full test suite (`pytest tests/test_v2.py`) before closing.
+ 
++---
++
++## Sprint 5.1 — Plugin System & First-Run Experience
++
++**Scope:** `cli/main.py`, `core/pipeline.py`, `tests/test_v2.py`, `README.md`
++**Status:** Done
++
++### Deliverables
++
++| # | Deliverable | Detail |
++|---|---|---|
++| 5.1.1 | Game logo fallback (Item 1) | `_load_game_logo()` searches marquees_dir first, then `profile/assets/logo_game.*`; three new pipeline tests |
++| 5.1.2 | Editable profiles/ bootstrap (Item 2) | `_bootstrap_profiles()` copies built-in profiles to `<exe-dir>/profiles/` on first run via `shutil.copytree`; never overwrites existing profiles; `--profiles-dir` default updated to `_PROFILES` |
++| 5.1.3 | README revision (Item 3) | Architecture tree, scaffold filenames, JSON Schema `rotate` per slot, logo resolution order, Standalone section with full layout tree |
++| 5.1.4 | instructions.txt generation (Item 4) | `_bootstrap_instructions()` writes a 4 KB plain-text quick-start guide on first run only; covers folder layout, file conventions, all render flags with examples, other commands, and how to add a profile |
++
++### Acceptance criteria
++
++- `pytest tests/test_v2.py -v` → **52 passed**.
++- First run creates `<exe-dir>/profiles/`, `<exe-dir>/data/` tree, and `<exe-dir>/instructions.txt`.
++- Subsequent runs add only new built-in profiles; existing files are never overwritten.
++- `box3d render -p mvs` resolves game logo as: marquees_dir stem → profile assets/logo_game.* → None.
++
++---
+ 
+ ## Sprint 5 — PyInstaller Readiness & Release Closure
+ 
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,7 +8,35 @@
+ 
+ ## [Unreleased]
+ 
++### Added (Sprint 5.1)
+ 
++- **Game logo fallback** — `_load_game_logo()` in `core/pipeline.py` now resolves
++  the per-cover game logo in two stages: (1) `data/inputs/marquees/<stem>.*`, then
++  (2) `profiles/<n>/assets/logo_game.*`. Falls back to `None` silently if both are
++  absent. Three new tests verify priority, fallback, and the no-logo path.
++- **Editable profiles/ next to the executable** — `_bootstrap_profiles()` in
++  `cli/main.py` copies the built-in profiles from the bundle to `<exe-dir>/profiles/`
++  on first run using `shutil.copytree`. On subsequent runs only new built-in profiles
++  are added; existing ones are never overwritten, preserving user edits. The
++  `--profiles-dir` default now points to this user-editable directory.
++- **`instructions.txt` on first run** — `_bootstrap_instructions()` writes a
++  comprehensive plain-text quick-start guide next to the executable the first time
++  the binary is launched. The file is never overwritten. Covers: folder structure,
++  file naming conventions, all render flags with defaults and examples, other
++  commands, and steps to add a new profile.
++- **`_PROFILES` module constant** — exposed alongside `_BUNDLE` and `_DATA` in
++  `cli/main.py` for consistent path resolution across all bootstrap functions.
++
++### Changed (Sprint 5.1)
++
++- **README** — Architecture tree updated with per-file detail for profile `assets/`
++  directories. "Standalone executable" section expanded to show `profiles/` and
++  `instructions.txt` in the layout tree, with notes on editing profiles. "Creating a
++  Profile" scaffold now lists all expected filenames and supported extensions. Profile
++  JSON Schema corrected: `rotate` is documented as a per-slot integer field (degrees)
++  replacing the erroneous `rotate_logos` bool; "Logo resolution order" section added.
++
++---
+ 
+ ## [2.0.0-rc1] — 2026-03
+ 
