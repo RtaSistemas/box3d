@@ -32,6 +32,7 @@ tests/visual_output/
 .vscode/
 *.swp
 *.swo
+*.patch
 .DS_Store
 Thumbs.db
 

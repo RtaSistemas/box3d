@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics",
 ]
 
@@ -34,9 +35,9 @@ dev = ["pytest>=8.0"]
 box3d = "cli.main:main"
 
 [project.urls]
-Homepage   = "https://github.com/YOUR_USERNAME/box3d"
-Repository = "https://github.com/YOUR_USERNAME/box3d"
-Issues     = "https://github.com/YOUR_USERNAME/box3d/issues"
+Homepage   = "https://github.com/Rtasistemas/box3d"
+Repository = "https://github.com/Rtasistemas/box3d"
+Issues     = "https://github.com/Rtasistemas/box3d/issues"
 
 [tool.setuptools.packages.find]
 where  = ["."]

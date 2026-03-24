@@ -35,6 +35,7 @@ overwritten, preserving user edits.
 from __future__ import annotations
 
 import argparse
+import datetime
 import logging
 import shutil
 import subprocess

@@ -311,7 +311,7 @@ box3d/
 │       └── index.html           # Self-contained visual profile editor
 │
 └── tests/
-    ├── test_v2.py               # 49 unit & integration tests
+    ├── test_v2.py               # 52 unit & integration tests
     ├── run_visual_tests.py      # Manual visual verification runner
     └── assets/                  # Fixtures: cover, marquee, logos, templates
 ```
@@ -552,7 +552,7 @@ Located at `tools/box3d_designer_pro/index.html` — no server or build step req
 pytest tests/test_v2.py -v
 ```
 
-Expected output: **49 tests passed**.
+Expected output: **52 tests passed**.
 
 ### Test coverage breakdown
 
@@ -564,6 +564,7 @@ Expected output: **49 tests passed**.
 | `TestBlending` | 9 | Screen blend, DstIn, diagonal color matrix, silhouette mask |
 | `TestSpineBuilder` | 7 | Spine generation for all built-in profiles |
 | `TestPipeline` | 8 | End-to-end batch render, dry-run, worker scaling, all profiles |
+| `TestGameLogoFallback` | 3 | Logo resolution: fallback to profile asset, None when absent, dynamic priority |
 
 ### Visual regression tests
 
@@ -579,7 +580,7 @@ python tests/run_visual_tests.py
 1. Fork the repository and create a feature branch.
 2. Run `pip install -e ".[dev]"` to install dev dependencies.
 3. Make your changes and add tests covering the new behaviour.
-4. Run `pytest tests/test_v2.py -v` — all 49 tests must pass.
+4. Run `pytest tests/test_v2.py -v` — all 52 tests must pass.
 5. Open a pull request against `main`.
 
 **Adding a new built-in profile** follows the same process as [Creating a Profile](#creating-a-profile). Include the `template.png` and at least one end-to-end test in `TestPipeline`.
