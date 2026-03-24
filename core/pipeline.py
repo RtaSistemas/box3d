@@ -104,14 +104,26 @@ class RenderPipeline:
             return None
 
     def _load_game_logo(self, stem: str) -> Image.Image | None:
-        """Find and load a per-cover game marquee with OOM Hardening."""
+        """Find and load the per-cover game logo with OOM Hardening.
+
+        Resolution order:
+        1. marquees_dir/<stem>.* — dynamic marquee matched by cover filename.
+        2. profile/assets/logo_game.* — profile-level fallback logo.
+        3. None — spine rendered without a game logo.
+        """
+        # 1ª tentativa: marquee dinâmica por nome da capa
         path = _find_asset(self.marquees_dir, stem)
+
+        # 2ª tentativa: logo_game.* dentro do assets/ do perfil
         if path is None:
-            return None
+            path = _find_asset(self.profile.root / "assets", "logo_game")
+
+        if path is None:
+            return None  # nenhum encontrado — spine sem logo de jogo
         try:
             return _safe_open(path)
         except Exception as exc:
-            log.warning("Cannot open game marquee '%s': %s", path, exc)
+            log.warning("Cannot open game logo '%s': %s", path, exc)
             return None
 
     # ------------------------------------------------------------------
