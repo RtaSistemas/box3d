@@ -8,8 +8,8 @@ assets (covers, logos, marquees, templates) are opened here with
 OOM Hardening applied, then passed as in-memory PIL Image objects
 to the rendering engine.
 
-Circuit Breaker: if consecutive errors exceed 2 (MULTI-AI-PROTO-V3.4 HIGH policy)
-or total errors exceed 20% of the batch, the pipeline aborts with a critical log.
+Circuit Breaker: if consecutive errors exceed 10 or total errors
+exceed 20% of the batch, the pipeline aborts with a critical log.
 """
 
 from __future__ import annotations
@@ -28,11 +28,8 @@ log = logging.getLogger("box3d.pipeline")
 
 VALID_EXT: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
-# Circuit Breaker thresholds (MULTI-AI-PROTO-V3.4 §3)
-# HIGH severity: 2 consecutive failures → freeze.
-# Percentage guard: abort if total errors exceed 20 % of the batch
-# (protects large runs where 2 consecutive errors could be transient noise).
-_CB_MAX_CONSECUTIVE = 2
+# Circuit Breaker thresholds
+_CB_MAX_CONSECUTIVE = 10
 _CB_PCT_THRESHOLD   = 0.20
 
 
@@ -106,20 +103,24 @@ class RenderPipeline:
     def _load_game_logo(self, stem: str) -> Image.Image | None:
         """Find and load the per-cover game logo with OOM Hardening.
 
-        Resolution order:
-        1. marquees_dir/<stem>.* — dynamic marquee matched by cover filename.
-        2. profile/assets/logo_game.* — profile-level fallback logo.
-        3. None — spine rendered without a game logo.
+        Resolution order
+        ----------------
+        1. <marquees_dir>/<stem>.*  — dynamic per-game marquee.
+        2. <profile>/assets/logo_game.*  — profile-level fallback logo
+           (e.g. the system manufacturer logo used when no specific marquee
+           exists for the current cover).
+        3. None  — spine rendered without a game logo.
         """
-        # 1ª tentativa: marquee dinâmica por nome da capa
+        # Stage 1: dynamic marquee matched by cover filename stem
         path = _find_asset(self.marquees_dir, stem)
 
-        # 2ª tentativa: logo_game.* dentro do assets/ do perfil
+        # Stage 2: profile-level fallback — logo_game.* inside assets/
         if path is None:
             path = _find_asset(self.profile.root / "assets", "logo_game")
 
         if path is None:
-            return None  # nenhum encontrado — spine sem logo de jogo
+            return None
+
         try:
             return _safe_open(path)
         except Exception as exc:

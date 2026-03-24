@@ -5,24 +5,26 @@ work was validated by the full test suite (`pytest tests/test_v2.py`) before clo
 
 ---
 
-## Sprint 6 — Game Logo Fallback & First-Run Experience
+## Sprint 5.1 — Plugin System & First-Run Experience
 
 **Scope:** `cli/main.py`, `core/pipeline.py`, `tests/test_v2.py`, `README.md`
 **Status:** Done
 
 ### Deliverables
 
-| # | Deliverable | File | Detail |
-|---|---|---|---|
-| 6.1 | Game logo fallback | `core/pipeline.py` | `_load_game_logo()` resolves in two stages: `marquees_dir/<stem>.*` then `profile/assets/logo_game.*`; three new tests in `TestGameLogoFallback` |
-| 6.2 | `instructions.txt` on first run | `cli/main.py` | `_bootstrap_instructions()` writes a plain-text offline guide next to the executable on the first run only (never overwritten); covers folder layout, file naming, all render flags, aux commands, and "add a profile" steps |
+| # | Deliverable | Detail |
+|---|---|---|
+| 5.1.1 | Game logo fallback (Item 1) | `_load_game_logo()` searches marquees_dir first, then `profile/assets/logo_game.*`; three new pipeline tests |
+| 5.1.2 | Editable profiles/ bootstrap (Item 2) | `_bootstrap_profiles()` copies built-in profiles to `<exe-dir>/profiles/` on first run via `shutil.copytree`; never overwrites existing profiles; `--profiles-dir` default updated to `_PROFILES` |
+| 5.1.3 | README revision (Item 3) | Architecture tree, scaffold filenames, JSON Schema `rotate` per slot, logo resolution order, Standalone section with full layout tree |
+| 5.1.4 | instructions.txt generation (Item 4) | `_bootstrap_instructions()` writes a 4 KB plain-text quick-start guide on first run only; covers folder layout, file conventions, all render flags with examples, other commands, and how to add a profile |
 
 ### Acceptance criteria
 
 - `pytest tests/test_v2.py -v` → **52 passed**.
-- First run creates `instructions.txt` next to the executable (or at project root in dev).
-- Subsequent runs leave `instructions.txt` untouched even if content differs.
-- `box3d render -p mvs` resolves game logo as: `marquees_dir` stem → `profile/assets/logo_game.*` → None.
+- First run creates `<exe-dir>/profiles/`, `<exe-dir>/data/` tree, and `<exe-dir>/instructions.txt`.
+- Subsequent runs add only new built-in profiles; existing files are never overwritten.
+- `box3d render -p mvs` resolves game logo as: marquees_dir stem → profile assets/logo_game.* → None.
 
 ---
 

@@ -92,7 +92,6 @@ jobs:
             --strip \
             --name ${{ matrix.build_name }} \
             --add-data "profiles:profiles" \
-            --add-data "tools:tools" \
             cli/main.py
 
       - name: Build standalone executable (Windows)
@@ -103,7 +102,6 @@ jobs:
             --onefile `
             --name ${{ matrix.build_name }} `
             --add-data "profiles;profiles" `
-            --add-data "tools;tools" `
             cli/main.py
 
       - name: Upload asset to GitHub Release

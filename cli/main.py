@@ -24,9 +24,12 @@ and to ``<project root>/data`` during normal Python execution.  This
 directory is **never inside _MEIPASS**, so output files survive after the
 process exits and the temp extraction directory is destroyed.
 
-On the very first run the CLI also writes ``instructions.txt`` next to the
-executable (or at the project root in development).  The file is never
-overwritten — the user may edit or delete it freely.
+``_PROFILES`` — user-editable profiles directory, populated from the
+bundle on the first run via ``_bootstrap_profiles()``.  Resolves to
+``<directory of the executable>/profiles`` in a frozen bundle and to
+``<project root>/profiles`` in development.  New built-in profiles added
+in a later release are copied automatically; existing profiles are never
+overwritten, preserving user edits.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import logging
+import shutil
 import subprocess
 import sys
 import webbrowser
@@ -106,112 +110,169 @@ def _bootstrap_data_dir() -> None:
         (_DATA / sub).mkdir(parents=True, exist_ok=True)
 
 
+def _bootstrap_profiles() -> Path:
+    """Ensure an editable profiles/ directory exists next to the executable.
+
+    In a frozen PyInstaller bundle:
+      - Destination: ``<exe-dir>/profiles/``  (persistent, user-editable)
+      - Source:      ``sys._MEIPASS/profiles/``  (read-only, inside the bundle)
+      - First run:   the entire profiles/ tree is copied from the bundle.
+      - Later runs:  only profile directories not yet present are added.
+                     Existing profiles are **never overwritten**, preserving
+                     any user edits to ``profile.json``, ``template.png``, or
+                     ``assets/``.
+
+    In development (not frozen):
+      - Returns ``<project_root>/profiles/`` directly — no copying needed.
+
+    Returns the path that should be used as the default ``--profiles-dir``.
+    """
+    if not getattr(sys, "frozen", False):
+        return _BUNDLE / "profiles"          # dev: already on disk, editable
+
+    dest = Path(sys.executable).parent / "profiles"
+    src  = _BUNDLE / "profiles"              # sys._MEIPASS/profiles/
+
+    if not dest.exists():
+        # First run — copy the full bundled profiles/ tree
+        shutil.copytree(str(src), str(dest))
+        log_bootstrap = logging.getLogger("box3d.cli")
+        log_bootstrap.info("profiles/ initialised at %s", dest)
+    else:
+        # Subsequent runs — add any new built-in profiles, skip existing ones
+        log_bootstrap = logging.getLogger("box3d.cli")
+        for profile_src in src.iterdir():
+            if not profile_src.is_dir():
+                continue
+            profile_dest = dest / profile_src.name
+            if not profile_dest.exists():
+                shutil.copytree(str(profile_src), str(profile_dest))
+                log_bootstrap.info("New built-in profile added: %s", profile_src.name)
+
+    return dest
+
+
+_PROFILES = _bootstrap_profiles()   # editable profiles/ — next to the exe
+
+
 # ---------------------------------------------------------------------------
 # Bootstrap — instructions.txt on first run
 # ---------------------------------------------------------------------------
 
 def _bootstrap_instructions() -> None:
-    """Write instructions.txt next to the executable on the very first run.
+    """Write instructions.txt next to the executable on first run only.
 
-    The file is **never overwritten** — the user may edit or delete it freely.
-    In development mode it is written to the project root (add to .gitignore
-    if unwanted).
-
-    Destination:
-      Frozen : ``<exe-dir>/instructions.txt``
-      Dev    : ``<project-root>/instructions.txt``  (same directory as _DATA/..)
+    The file is never overwritten — the user may edit or delete it freely.
+    In development mode the file is written to the project root (harmless;
+    add it to .gitignore if unwanted).
     """
     dest = _DATA.parent / "instructions.txt"
     if dest.exists():
         return
 
-    version   = "2.0.0"
-    generated = datetime.date.today().isoformat()
+    version = "2.0.0"
 
     content = f"""\
 box3d v{version} — Quick-Start Guide
 {"=" * 52}
-Generated: {generated}
-Edit freely — this file is never overwritten by the application.
+
+Generated automatically on first run. Edit freely — this file is never
+overwritten by the application.
 
 FOLDER STRUCTURE
 ----------------
 
   <this folder>/
-  ├── box3d-linux-x64          (or box3d-windows-x64.exe)
-  ├── instructions.txt         ← this file
+  ├── box3d-linux-x64   (or box3d-windows-x64.exe)
+  ├── instructions.txt  ← this file
+  ├── profiles/         ← plugin profiles (edit freely, never overwritten)
+  │   ├── mvs/
+  │   │   ├── profile.json      geometry + spine layout
+  │   │   ├── template.png      RGBA box art template
+  │   │   └── assets/
+  │   │       ├── logo_top.png       system logo — top of spine
+  │   │       ├── logo_bottom.png    system logo — bottom of spine
+  │   │       └── logo_game.png      fallback game logo (optional)
+  │   ├── arcade/  (same structure)
+  │   └── dvd/     (same structure)
   └── data/
       ├── inputs/
-      │   ├── covers/          ← PUT YOUR COVER IMAGES HERE
-      │   │                       (WebP, PNG, JPG, JPEG, BMP, TIFF)
-      │   └── marquees/        ← per-game logos matched by filename stem
+      │   ├── covers/       ← PUT YOUR COVER IMAGES HERE
+      │   └── marquees/     ← per-game logos (matched by filename stem)
       └── output/
-          ├── converted/       ← rendered 3-D box art appears here
-          ├── temp/            ← auto-managed scratch space
-          └── logs/            ← log files (use --log-file "")
-
-PROFILE ASSETS (bundled, read-only)
-------------------------------------
-
-  profiles/<name>/
-  ├── profile.json             ← geometry + spine layout
-  ├── template.png             ← RGBA box art template
-  └── assets/
-      ├── logo_top.*           ← system logo — top of spine
-      ├── logo_bottom.*        ← system logo — bottom of spine
-      └── logo_game.*          ← fallback game logo (used when no marquee
-                                  is found in data/inputs/marquees/)
+          ├── converted/    ← rendered 3-D box art appears here
+          ├── temp/         ← auto-managed scratch space
+          └── logs/         ← log files (use --log-file "")
 
 FILE NAMING CONVENTIONS
 -----------------------
 
-  Cover images  : any filename, any supported format
-  Marquees      : <cover-stem>.<ext>
-                  Example: cover "sf2.webp" → marquee "sf2.png"
-  Game logo     : logo_game.<ext>  inside profile assets/
-                  Used only when no matching marquee exists for a cover.
-  System logos  : logo_top.<ext> and logo_bottom.<ext>  inside profile assets/
+  Cover images:   any name, any supported format
+                  (WebP, PNG, JPG, JPEG, BMP, TIFF)
 
-  Logo resolution order (per cover):
-    1. data/inputs/marquees/<cover-stem>.*   — dynamic per-game marquee
-    2. profiles/<name>/assets/logo_game.*    — profile fallback
-    3. (none)                                — spine rendered without game logo
+  Marquees:       <cover-stem>.<ext>
+                  Example: cover sf2.webp → marquee sf2.png
 
-RENDER COMMAND — ALL FLAGS
----------------------------
+  Game logo fallback (inside profile assets/):
+                  logo_game.<ext>
+                  Used when no matching marquee is found in data/inputs/marquees/
+
+  System logos (inside profile assets/):
+                  logo_top.<ext>
+                  logo_bottom.<ext>
+
+GLOBAL OPTIONS
+--------------
+
+  These flags apply to ALL commands and must be placed BEFORE the subcommand.
+
+  box3d [global options] <command> [command options]
+
+      --profiles-dir <dir>   Profiles directory to load from
+                             Default: profiles/ next to the executable
+                             Use this to load profiles from any external path.
+                             Example: box3d --profiles-dir ~/my-profiles render -p ps2
+
+      --verbose / -v         Enable DEBUG-level logging
+      --log-file  <path>     Write log to file (pass "" for default location)
+
+RENDER COMMAND — ALL OPTIONS
+-----------------------------
 
   box3d render --profile <name> [options]
 
   REQUIRED
-    -p, --profile <name>        Profile to use  (mvs | arcade | dvd | custom)
+    -p, --profile <name>       Profile to use (mvs | arcade | dvd | custom)
 
   INPUT / OUTPUT
-    -i, --input   <dir>         Cover images directory
-                                Default: data/inputs/covers/
-    -o, --output  <dir>         Output directory
-                                Default: data/output/converted/
-    -f, --output-format <fmt>   Output format: webp (default) | png
+    -i, --input   <dir>        Cover images directory
+                               Default: data/inputs/covers/
+    -o, --output  <dir>        Output directory
+                               Default: data/output/converted/
+    -f, --output-format <fmt>  Output format: webp (default) | png
 
   SPINE APPEARANCE
-    -b, --blur-radius <n>       Gaussian blur on spine background   (default: 20)
-    -d, --darken      <n>       Dark overlay intensity 0–255        (default: 180)
-        --rgb <R,G,B>           RGB channel multipliers             (default: 1.0,1.0,1.0)
-        --spine-source <edge>   Cover edge to sample: left | right | center
-    -c, --cover-fit    <mode>   Cover scaling: stretch | fit | crop
+    -b, --blur-radius <n>      Gaussian blur on spine background  (default: 20, must be >= 0)
+    -d, --darken      <n>      Dark overlay intensity 0–255       (default: 180)
+        --rgb <R,G,B>          RGB channel multipliers, comma-separated (default: 1.0,1.0,1.0)
+                               Example: --rgb 1.1,1.0,0.9  (warm tone)
+                               Values > 1 brighten, < 1 darken. Must be >= 0.
+        --spine-source <edge>  Cover edge to sample: left | right | center
+        --cover-fit    <mode>  Cover scaling: stretch | fit | crop
 
   LOGOS
-    -l, --no-logos              Disable all logo overlays
-    -r, --no-rotate             Force all logo rotations to 0 degrees
-        --top-logo    <file>    Override top spine logo file
-        --bottom-logo <file>    Override bottom spine logo file
-        --marquees-dir <dir>    Override marquees directory
+        --no-logos             Disable all logo overlays
+        --no-rotate            Force all logo rotations to 0°
+        --top-logo    <file>   Override top spine logo
+        --bottom-logo <file>   Override bottom spine logo
+        --marquees-dir <dir>   Override marquees directory
 
   EXECUTION
-    -w, --workers  <n>          Parallel render threads             (default: 4)
-    -s, --skip-existing         Skip covers already rendered
-        --dry-run               Validate inputs without writing output
-    -v, --verbose               Enable DEBUG-level logging
-        --log-file  <path>      Write log to file  (pass "" for default location)
+    -w, --workers  <n>         Parallel render threads  (default: 4)
+    -s, --skip-existing        Skip covers already rendered
+        --dry-run              Validate inputs without writing output
+    -v, --verbose              Enable DEBUG-level logging
+        --log-file  <path>     Write log to file (pass "" for default location)
 
 QUICK EXAMPLES
 --------------
@@ -220,7 +281,7 @@ QUICK EXAMPLES
   box3d render -p mvs
 
   # Arcade profile, 8 workers, PNG output, warm colour tone
-  box3d render -p arcade -w 8 -f png --rgb 1.1,1.0,0.9
+  box3d render -p arcade -w 8 --output-format png --rgb 1.1,1.0,0.9
 
   # Preview run — no files written
   box3d render -p dvd --dry-run --verbose
@@ -228,8 +289,8 @@ QUICK EXAMPLES
   # Only process covers not yet rendered
   box3d render -p mvs --skip-existing
 
-  # Custom spine: strong overlay, cool colour shift, crop-fit cover
-  box3d render -p arcade --darken 220 --rgb 0.85,0.9,1.15 -c crop
+  # Custom spine: strong dark overlay, cool colour shift, crop-fit cover
+  box3d render -p arcade --darken 220 --rgb 0.85,0.9,1.15 --cover-fit crop
 
 OTHER COMMANDS
 --------------
@@ -241,14 +302,48 @@ OTHER COMMANDS
 ADDING A NEW PROFILE
 --------------------
 
-  1. Create profiles/myprofile/ with profile.json and template.png.
-  2. Optionally add assets/logo_top.*, logo_bottom.*, logo_game.*
-  3. Align quad coordinates with the designer:
+  1. Create a directory inside profiles/:
+       profiles/myprofile/
+
+  2. Add the required files:
+       profile.json    — geometry and spine layout (see built-in examples)
+       template.png    — RGBA box art template (max 8192 × 8192 px)
+
+  3. Optionally add to profiles/myprofile/assets/:
+       logo_top.png        system logo top of spine
+       logo_bottom.png     system logo bottom of spine
+       logo_game.png       fallback game logo
+
+  4. Use the Designer Pro to adjust quad coordinates:
        box3d designer
-  4. Test:
+
+  5. Test the new profile:
        box3d render -p myprofile --dry-run --verbose
 
-  The profile is available immediately — no restart required.
+The profile is available immediately — no restart required.
+
+EXTERNAL / CUSTOM PROFILES
+---------------------------
+
+  You can store profiles anywhere on your system and point box3d to them
+  using the --profiles-dir global flag:
+
+    box3d --profiles-dir /path/to/my-profiles render -p myprofile
+
+  This is useful when:
+  - You want profiles on a shared or network drive
+  - You are using the standalone executable and prefer to keep profiles
+    in a separate folder that survives updates
+  - You maintain multiple profile sets for different systems
+
+  Copy a built-in profile as a starting point:
+
+    cp -r profiles/mvs /path/to/my-profiles/ps2
+    # edit /path/to/my-profiles/ps2/profile.json and template.png
+    box3d --profiles-dir /path/to/my-profiles render -p ps2
+
+  Windows example:
+    box3d-windows-x64.exe --profiles-dir C:\\MyProfiles render -p ps2
 """
 
     try:
@@ -304,7 +399,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   box3d render -p mvs
-  box3d render -p arcade -w 8 -R "1.15 0 0  0 1.0 0  0 0 0.85"
+  box3d render -p arcade -w 8 --rgb 1.1,1.0,0.9
+  box3d --profiles-dir ~/my-profiles render -p ps2
   box3d profiles list
   box3d designer
 """
@@ -313,8 +409,8 @@ Examples:
     # Global arguments
     parser.add_argument(
         "--profiles-dir",
-        default=str(_BUNDLE / "profiles"),
-        help="Path to profiles directory (default: bundled profiles/)",
+        default=str(_PROFILES),
+        help="Path to profiles directory (default: profiles/ next to the executable)",
     )
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Enable debug logging")
@@ -555,6 +651,7 @@ def cmd_profiles_validate(registry: ProfileRegistry) -> int:
 def main() -> None:
     _bootstrap_data_dir()          # create data/ tree if absent (idempotent)
     _bootstrap_instructions()      # write instructions.txt on first run only
+    # _PROFILES already populated at import time via _bootstrap_profiles()
 
     parser = build_parser()
     args   = parser.parse_args()

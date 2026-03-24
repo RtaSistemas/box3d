@@ -4,16 +4,17 @@
 
 set -e
 
-BOX3D_CMD="python3 cli/main.py"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BOX3D_CMD="env PYTHONPATH=${SCRIPT_DIR} python3 ${SCRIPT_DIR}/cli/main.py"
 COVERS_DIR="data/inputs/covers"
 
 echo "============================================================"
 echo " Iniciando Testes de CLI do Box3D (v1.0.3)"
 echo "============================================================"
 
-# Garantir que a pasta de input existe para não falhar no Fail-Fast base
+# Garantir que a pasta de input existe e contém um cover válido para os testes
 mkdir -p "$COVERS_DIR"
-touch "$COVERS_DIR/dummy_cover.webp" # Fake file para passar o dry-run
+cp "${SCRIPT_DIR}/tests/assets/cover.webp" "$COVERS_DIR/dummy_cover.webp"
 
 echo "[1/4] Testando Limites Matemáticos e Seguranças (Fail-Fast)..."
 # Deve falhar: Darken fora do limite

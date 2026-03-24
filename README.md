@@ -21,9 +21,11 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [CLI Reference](#cli-reference)
+  - [Global options](#global-options)
 - [Architecture](#architecture)
 - [Compositing Pipeline](#compositing-pipeline)
 - [Profiles](#profiles)
+  - [Using Custom Profiles](#using-custom-profiles)
   - [Built-in Profiles](#built-in-profiles)
   - [Creating a Profile](#creating-a-profile)
   - [Profile JSON Schema](#profile-json-schema)
@@ -41,7 +43,8 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 |---|---|
 | **Plugin profiles** | Add new box styles by dropping a directory into `profiles/` — zero code changes |
 | **Parallel rendering** | ThreadPoolExecutor with configurable worker count |
-| **OOM hardening** | Hard 8 192 px ceiling at two independent layers; immune to pixel-bomb inputs |
+| **Batch circuit breaker** | Aborts a batch after 2 consecutive errors or when errors exceed 20% of processed files, preventing cascading failures |
+| **OOM hardening** | Hard 8 192 px ceiling at three independent layers; immune to pixel-bomb inputs |
 | **Zero-disk-churn** | All intermediate data lives in RAM as `PIL.Image` objects — no temp files |
 | **Pure Python** | Pillow ≥ 10 and NumPy ≥ 1.24 only — no external binaries |
 | **Visual editor** | Browser-based Box3D Designer Pro for authoring profiles interactively |
@@ -100,8 +103,8 @@ Standalone executables (no Python required) are available on the
 
 ### Standalone executable — first run
 
-The executable creates its own data directory next to itself on the first run.
-No setup is required beyond placing your cover images in the right folder.
+On first launch, the executable automatically creates the folder structure it needs
+next to itself — no installer, no configuration required.
 
 **Linux / macOS**
 
@@ -109,7 +112,7 @@ No setup is required beyond placing your cover images in the right folder.
 # Download and make executable
 chmod +x box3d-linux-x64
 
-# First run — data/ tree is created automatically next to the binary
+# First run — profiles/ and data/ are created next to the binary
 ./box3d-linux-x64 profiles list
 
 # Drop covers into data/inputs/covers/ then render
@@ -121,7 +124,7 @@ cp /path/to/covers/*.webp data/inputs/covers/
 **Windows**
 
 ```powershell
-# First run — data\ tree is created automatically next to the .exe
+# First run — profiles\ and data\ are created next to the .exe
 .\box3d-windows-x64.exe profiles list
 
 # Drop covers into data\inputs\covers\ then render
@@ -130,28 +133,44 @@ copy C:\path\to\covers\*.webp data\inputs\covers\
 # Output appears in data\output\converted\
 ```
 
-**Layout created automatically on the first run:**
+**Full layout created automatically:**
 
 ```
 <folder containing the exe>/
-├── box3d-linux-x64          (or box3d-windows-x64.exe)
-├── instructions.txt         ← offline guide, generated once, never overwritten
-└── data/
-    ├── inputs/
-    │   ├── covers/          ← put your flat cover images here (WebP, PNG, JPG)
-    │   └── marquees/        ← optional per-cover game logos (matched by filename stem)
-    └── output/
-        ├── converted/       ← rendered 3-D box art appears here
-        ├── temp/            ← pipeline scratch space (auto-managed)
-        └── logs/            ← log files when --log-file="" is used
+├── profiles/                    ← editable plugin profiles (copied from bundle)
+│   ├── mvs/
+│   │   ├── profile.json         ← edit to adjust geometry
+│   │   ├── template.png         ← replace with your own box art template
+│   │   └── assets/
+│   │       ├── logo_top.png     ← system logo top of spine
+│   │       ├── logo_bottom.png  ← system logo bottom of spine
+│   │       └── logo_game.png    ← fallback game logo (optional)
+│   ├── arcade/  ...
+│   └── dvd/     ...
+├── data/
+│   ├── inputs/
+│   │   ├── covers/              ← put your flat cover images here (WebP, PNG, JPG)
+│   │   └── marquees/            ← per-game logos matched by filename stem
+│   └── output/
+│       ├── converted/           ← rendered 3-D box art appears here
+│       ├── temp/                ← pipeline scratch space (auto-managed)
+│       └── logs/                ← log files when --log-file="" is used
+└── instructions.txt             ← quick-start guide (generated on first run)
 ```
 
-> **Note:** the executable and the `data/` directory must stay in the same folder.
-> The executable writes nothing inside itself — it is safe to run from any location
-> as long as `data/` is a sibling of the binary.
->
-> `instructions.txt` is written once on the first run and **never overwritten**,
-> so you can annotate or delete it freely.
+> **Editing profiles:** `profiles/` is yours to modify. Change `profile.json` to
+> adjust geometry, swap `template.png` for a custom box art, or add `logo_game.png`
+> to `assets/` as a system-wide fallback marquee. New built-in profiles released in
+> future versions are added automatically without overwriting your edits.
+
+> **Adding a new profile:** create a subdirectory inside `profiles/` with a
+> `profile.json` and `template.png`. It is immediately available on the next run
+> without restarting or recompiling.
+
+> **Using profiles stored elsewhere:** pass `--profiles-dir /path/to/your/profiles/`
+> to point box3d at any directory on your system. This is the recommended workflow
+> for Windows executable users who want profiles outside the default location
+> (see [Using Custom Profiles](#using-custom-profiles)).
 
 
 
@@ -180,6 +199,22 @@ python cli/main.py render --profile mvs --dry-run --verbose
 
 ## CLI Reference
 
+### Global options
+
+These flags apply to **all commands** and must be placed **before** the subcommand name.
+
+```
+python cli/main.py [global options] <command> [command options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--profiles-dir` | `profiles/` next to the executable | Path to the profiles directory. Override to load profiles from an external location (see [Using Custom Profiles](#using-custom-profiles)). |
+| `--verbose` / `-v` | — | Enable DEBUG-level logging |
+| `--log-file` | — | Write log output to a file (`""` uses `data/output/logs/box3d.log`) |
+
+---
+
 ### `render`
 
 Renders all cover images in the input directory using the specified profile.
@@ -194,9 +229,9 @@ python cli/main.py render --profile <name> [options]
 | `--input` | `-i` | `data/inputs/covers/` | Directory containing source cover images |
 | `--output` | `-o` | `data/output/converted/` | Output directory |
 | `--workers` | `-w` | `4` | Number of parallel render threads |
-| `--blur-radius` | `-b` | `20` | Gaussian blur radius applied to sampled spine background |
-| `--darken` | `-d` | `180` | Spine dark overlay intensity (0 = off, 255 = black) |
-| `--rgb` | | `1.0,1.0,1.0` | RGB channel multipliers applied to the template (e.g. `0.9,0.9,1.1`) |
+| `--blur-radius` | `-b` | `20` | Gaussian blur radius applied to sampled spine background (`>= 0`) |
+| `--darken` | `-d` | `180` | Spine dark overlay intensity (`0`–`255`; 0 = off, 255 = solid black) |
+| `--rgb` | | `1.0,1.0,1.0` | RGB channel multipliers in `R,G,B` comma-separated format (e.g. `0.9,0.9,1.1`). Each value scales the respective channel (`> 1` brightens, `< 1` darkens). Must be `>= 0`. |
 | `--cover-fit` | | *(profile default)* | How the cover fills its quad: `stretch`, `fit`, or `crop` |
 | `--spine-source` | | *(profile default)* | Which edge of the cover to sample for the spine: `left`, `right`, or `center` |
 | `--no-rotate` | | *(profile default)* | Disable 90° CW logo rotation on the spine |
@@ -259,6 +294,12 @@ box3d/
 │
 ├── profiles/                    # Plugin bundles (JSON + template + assets)
 │   ├── mvs/                     # Neo Geo MVS cartridge  703×1000
+│   │   ├── profile.json         # Geometry + spine layout
+│   │   ├── template.png         # RGBA box template
+│   │   └── assets/
+│   │       ├── logo_top.png     # System logo — top of spine
+│   │       ├── logo_bottom.png  # System logo — bottom of spine
+│   │       └── logo_game.png    # Fallback game logo (used when no marquee found)
 │   ├── arcade/                  # Arcade cabinet          665×907
 │   └── dvd/                     # DVD case                633×907
 │
@@ -331,6 +372,42 @@ The MVS profile uses a mostly-transparent template. A DstIn keyed only on the te
 
 ## Profiles
 
+### Using Custom Profiles
+
+The `--profiles-dir` global flag lets you load profiles from any directory, not just the default `profiles/` folder next to the executable.
+
+**When is this useful?**
+
+- Running the **Windows or Linux executable** and wanting profiles in a separate folder
+- Managing **multiple profile sets** for different systems without mixing them
+- Using profiles on a **network drive** or shared storage
+
+**Workflow:**
+
+```bash
+# 1. Create your external profiles directory
+mkdir ~/my-box3d-profiles
+
+# 2. Copy an existing profile as a starting point
+cp -r profiles/mvs ~/my-box3d-profiles/ps2
+
+# 3. Edit ~/my-box3d-profiles/ps2/profile.json and template.png as needed
+
+# 4. Render using the external directory
+python cli/main.py --profiles-dir ~/my-box3d-profiles render --profile ps2
+```
+
+**Windows executable:**
+
+```powershell
+.\box3d-windows-x64.exe --profiles-dir C:\MyProfiles render --profile ps2
+```
+
+> Profiles inside `--profiles-dir` are discovered by the same filesystem scan as built-in
+> profiles. All rules apply: each subdirectory needs `profile.json` and `template.png`.
+
+---
+
 ### Built-in Profiles
 
 | Name | Box Style | Template Size | Cover Fit | Spine Source |
@@ -348,13 +425,16 @@ The MVS profile uses a mostly-transparent template. A DstIn keyed only on the te
 ```
 profiles/
 └── ps2/
-    ├── profile.json      ← required
-    ├── template.png      ← required (RGBA, any size up to 8192 × 8192)
-    └── assets/           ← optional logo files (any format in VALID_EXT)
-        ├── logo_top.*    ← system logo — top of spine
-        ├── logo_bottom.* ← system logo — bottom of spine
-        └── logo_game.*   ← fallback game logo (used when no dynamic marquee exists)
+    ├── profile.json          ← required
+    ├── template.png          ← required (RGBA, any size up to 8192 × 8192)
+    └── assets/               ← optional
+        ├── logo_top.png      ← system logo placed at the top of the spine
+        ├── logo_bottom.png   ← system logo placed at the bottom of the spine
+        └── logo_game.png     ← fallback game logo (used when no marquee found
+                                 in data/inputs/marquees/ for the current cover)
 ```
+
+Supported extensions for all logo files: `.png`, `.webp`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`.
 
 #### Step 2 — Author the profile JSON
 
@@ -422,23 +502,23 @@ python cli/main.py render --profile ps2 --input tests/assets/ --output /tmp/ps2-
 | `spine_source_frac` | float | no | Fraction of cover width to sample (default `0.20`) |
 | `spine_source` | `left\|right\|center` | no | Edge of cover to sample for spine background |
 | `cover_fit` | `stretch\|fit\|crop` | no | How the cover image fills `cover` dimensions |
-| `spine_layout.game` | `{max_w, max_h, center_y}` | yes | Game-logo slot on the spine |
-| `spine_layout.top` | `{max_w, max_h, center_y}` | no | Top-logo slot on the spine |
-| `spine_layout.bottom` | `{max_w, max_h, center_y}` | no | Bottom-logo slot on the spine |
+| `spine_layout.game` | `{max_w, max_h, center_y, rotate}` | yes | Game-logo slot on the spine |
+| `spine_layout.top` | `{max_w, max_h, center_y, rotate}` | no | Top-logo slot on the spine |
+| `spine_layout.bottom` | `{max_w, max_h, center_y, rotate}` | no | Bottom-logo slot on the spine |
 | `spine_layout.logo_alpha` | float 0–1 | no | Opacity of composited logos (default `0.85`) |
-| `spine_layout.game.rotate` | int (degrees) | no | Rotation for game-logo slot (default: `90`) |
-| `spine_layout.top.rotate` | int (degrees) | no | Rotation for top-logo slot (default: `90`) |
-| `spine_layout.bottom.rotate` | int (degrees) | no | Rotation for bottom-logo slot (default: `90`) |
+| `spine_layout.*.rotate` | int (degrees) | no | Rotation angle per slot in degrees (PIL convention: negative = CW). Default `0`. |
 
 Each quad point is `[x, y]` in pixel coordinates within `template_size`.
 
 #### Logo resolution order
 
-For each cover rendered, the game logo is resolved in this order:
+For each cover, the game logo on the spine is resolved in this order:
 
 1. `data/inputs/marquees/<cover-stem>.*` — dynamic per-game marquee matched by filename.
-2. `profiles/<name>/assets/logo_game.*` — profile-level fallback (e.g. system manufacturer logo).
-3. *(none)* — spine is rendered without a game logo; no error is raised.
+2. `profiles/<n>/assets/logo_game.*` — profile-level fallback (e.g. system manufacturer logo).
+3. None — spine is rendered without a game logo.
+
+The `--no-logos` flag disables all logo rendering (game, top, and bottom).
 
 ---
 

@@ -417,17 +417,16 @@ class TestPipeline:
             options=opts, logo_paths={}, marquees_dir=tmp_path/"m",
         ).run()
         assert stats["ok"] == 1
-
-class TestGameLogoFallback:
-    def test_fallback_uses_profile_asset_when_marquees_dir_empty(self, tmp_path):
-        """marquees_dir vazio + logo_game no assets/ → usa fallback do perfil."""
+    def test_game_logo_fallback_uses_profile_asset(self, tmp_path):
+        """When marquees_dir has no match, logo_game.* in profile assets/ is used."""
         import shutil, dataclasses
         covers = tmp_path / "covers"; covers.mkdir()
         shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
 
+        # Create a patched profile root with logo_game.webp in assets/
         assets_dir = tmp_path / "assets"; assets_dir.mkdir()
         shutil.copy(ASSETS / "marquee.webp", assets_dir / "logo_game.webp")
-
+        # Also provide template.png at the patched root
         reg     = ProfileRegistry(PROFILES).load()
         profile = reg.get("mvs")
         shutil.copy(profile.root / "template.png", tmp_path / "template.png")
@@ -442,8 +441,26 @@ class TestGameLogoFallback:
         ).run()
         assert stats["ok"] == 1 and stats["error"] == 0
 
-    def test_none_when_both_marquee_and_logo_game_missing(self, tmp_path):
-        """Sem marquee e sem logo_game → game_logo=None, render sem crash."""
+    def test_game_logo_dynamic_preferred_over_fallback(self, tmp_path):
+        """Dynamic marquee in marquees_dir takes priority over logo_game in assets/."""
+        import shutil
+        covers   = tmp_path / "covers";   covers.mkdir()
+        marquees = tmp_path / "marquees"; marquees.mkdir()
+        shutil.copy(ASSETS / "cover.webp",   covers   / "cover.webp")
+        shutil.copy(ASSETS / "marquee.webp", marquees / "cover.webp")  # stem matches
+
+        from core.pipeline import RenderPipeline
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
+            options=RenderOptions(workers=1), logo_paths={},
+            marquees_dir=marquees,
+        ).run()
+        assert stats["ok"] == 1
+
+    def test_game_logo_none_when_both_missing(self, tmp_path):
+        """Neither marquee nor logo_game → render succeeds with game_logo=None."""
         import shutil
         covers = tmp_path / "covers"; covers.mkdir()
         shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
@@ -456,22 +473,5 @@ class TestGameLogoFallback:
             options=RenderOptions(workers=1), logo_paths={},
             marquees_dir=tmp_path / "no_marquees",
         ).run()
-        assert stats["ok"] == 1
-
-    def test_dynamic_marquee_preferred_over_profile_fallback(self, tmp_path):
-        """Marquee dinâmica presente → usa marquee, ignora logo_game do perfil."""
-        import shutil
-        covers   = tmp_path / "covers";   covers.mkdir()
-        marquees = tmp_path / "marquees"; marquees.mkdir()
-        shutil.copy(ASSETS / "cover.webp",   covers   / "cover.webp")
-        shutil.copy(ASSETS / "marquee.webp", marquees / "cover.webp")
-
-        from core.pipeline import RenderPipeline
-        stats = RenderPipeline(
-            profile=ProfileRegistry(PROFILES).load().get("mvs"),
-            covers_dir=covers,
-            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
-            options=RenderOptions(workers=1), logo_paths={},
-            marquees_dir=marquees,
-        ).run()
+        # profiles/mvs/assets/ has no logo_game.* — runs fine with None
         assert stats["ok"] == 1

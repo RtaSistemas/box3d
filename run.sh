@@ -37,6 +37,5 @@ if [ ! -d "$DATA_DIR" ]; then
     fi
 fi
 
-# Mantém PYTHONPATH na raiz do projecto para que os módulos core/, engine/
-# e cli/ sejam resolvidos sem instalação via pip.
+# Mantém a configuração original de PYTHONPATH e execução
 PYTHONPATH="${SCRIPT_DIR}" exec python3 cli/main.py "$@"

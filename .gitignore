@@ -35,3 +35,6 @@ tests/visual_output/
 *.patch
 .DS_Store
 Thumbs.db
+
+# Generated on first run (user may edit or delete freely)
+instructions.txt
