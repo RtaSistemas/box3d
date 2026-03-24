@@ -220,11 +220,24 @@ class TestBlending:
         r, _, _, _ = out.getpixel((5,5))
         assert r < 120, "cover was washed out"
 
-    #def test_alpha_weighted_screen_preserves_dst_alpha(self):
-    #    dst = Image.new("RGBA", (10,10), (100,100,100,128))
-    #    src = Image.new("RGBA", (10,10), (200,200,200,255))
-    #    out = alpha_weighted_screen(dst, src)
-    #    assert out.getpixel((5,5))[3] == 128
+    def test_alpha_weighted_screen_alpha_union(self):
+        """Alpha result is union(dst, src) — ADR-004.
+
+        The pipeline requires this so template pixels outside the
+        spine/cover warp area survive the subsequent dst_in clip.
+        A src with higher alpha MUST elevate the result alpha.
+        """
+        # src alpha (255) > dst alpha (128) → result must be 255
+        dst = Image.new("RGBA", (10,10), (100,100,100,128))
+        src = Image.new("RGBA", (10,10), (200,200,200,255))
+        out = alpha_weighted_screen(dst, src)
+        assert out.getpixel((5,5))[3] == 255, "alpha union failed: src alpha must win"
+
+        # src alpha (64) < dst alpha (200) → result must stay 200
+        dst2 = Image.new("RGBA", (10,10), (100,100,100,200))
+        src2 = Image.new("RGBA", (10,10), (200,200,200,64))
+        out2 = alpha_weighted_screen(dst2, src2)
+        assert out2.getpixel((5,5))[3] == 200, "alpha union failed: dst alpha must win"
 
     def test_dst_in_white_mask_unchanged(self):
         dst  = Image.new("RGBA", (10,10), (255,0,0,200))
@@ -403,4 +416,62 @@ class TestPipeline:
             output_dir=tmp_path/"out", temp_dir=tmp_path/"temp",
             options=opts, logo_paths={}, marquees_dir=tmp_path/"m",
         ).run()
+        assert stats["ok"] == 1
+    def test_game_logo_fallback_uses_profile_asset(self, tmp_path):
+        """When marquees_dir has no match, logo_game.* in profile assets/ is used."""
+        import shutil, dataclasses
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        # Create a patched profile root with logo_game.webp in assets/
+        assets_dir = tmp_path / "assets"; assets_dir.mkdir()
+        shutil.copy(ASSETS / "marquee.webp", assets_dir / "logo_game.webp")
+        # Also provide template.png at the patched root
+        reg     = ProfileRegistry(PROFILES).load()
+        profile = reg.get("mvs")
+        shutil.copy(profile.root / "template.png", tmp_path / "template.png")
+        patched = dataclasses.replace(profile, root=tmp_path)
+
+        from core.pipeline import RenderPipeline
+        stats = RenderPipeline(
+            profile=patched, covers_dir=covers,
+            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
+            options=RenderOptions(workers=1), logo_paths={},
+            marquees_dir=tmp_path / "empty_marquees",
+        ).run()
+        assert stats["ok"] == 1 and stats["error"] == 0
+
+    def test_game_logo_dynamic_preferred_over_fallback(self, tmp_path):
+        """Dynamic marquee in marquees_dir takes priority over logo_game in assets/."""
+        import shutil
+        covers   = tmp_path / "covers";   covers.mkdir()
+        marquees = tmp_path / "marquees"; marquees.mkdir()
+        shutil.copy(ASSETS / "cover.webp",   covers   / "cover.webp")
+        shutil.copy(ASSETS / "marquee.webp", marquees / "cover.webp")  # stem matches
+
+        from core.pipeline import RenderPipeline
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
+            options=RenderOptions(workers=1), logo_paths={},
+            marquees_dir=marquees,
+        ).run()
+        assert stats["ok"] == 1
+
+    def test_game_logo_none_when_both_missing(self, tmp_path):
+        """Neither marquee nor logo_game → render succeeds with game_logo=None."""
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
+            options=RenderOptions(workers=1), logo_paths={},
+            marquees_dir=tmp_path / "no_marquees",
+        ).run()
+        # profiles/mvs/assets/ has no logo_game.* — runs fine with None
         assert stats["ok"] == 1

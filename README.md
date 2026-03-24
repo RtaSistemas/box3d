@@ -30,6 +30,7 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 - [Box3D Designer Pro](#box3d-designer-pro)
 - [Testing](#testing)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 
 ---
@@ -97,7 +98,73 @@ Standalone executables (no Python required) are available on the
 
 ---
 
-## Quick Start
+### Standalone executable — first run
+
+On first launch, the executable automatically creates the folder structure it needs
+next to itself — no installer, no configuration required.
+
+**Linux / macOS**
+
+```bash
+# Download and make executable
+chmod +x box3d-linux-x64
+
+# First run — profiles/ and data/ are created next to the binary
+./box3d-linux-x64 profiles list
+
+# Drop covers into data/inputs/covers/ then render
+cp /path/to/covers/*.webp data/inputs/covers/
+./box3d-linux-x64 render --profile mvs
+# Output appears in data/output/converted/
+```
+
+**Windows**
+
+```powershell
+# First run — profiles\ and data\ are created next to the .exe
+.\box3d-windows-x64.exe profiles list
+
+# Drop covers into data\inputs\covers\ then render
+copy C:\path\to\covers\*.webp data\inputs\covers\
+.\box3d-windows-x64.exe render --profile mvs
+# Output appears in data\output\converted\
+```
+
+**Full layout created automatically:**
+
+```
+<folder containing the exe>/
+├── profiles/                    ← editable plugin profiles (copied from bundle)
+│   ├── mvs/
+│   │   ├── profile.json         ← edit to adjust geometry
+│   │   ├── template.png         ← replace with your own box art template
+│   │   └── assets/
+│   │       ├── logo_top.png     ← system logo top of spine
+│   │       ├── logo_bottom.png  ← system logo bottom of spine
+│   │       └── logo_game.png    ← fallback game logo (optional)
+│   ├── arcade/  ...
+│   └── dvd/     ...
+├── data/
+│   ├── inputs/
+│   │   ├── covers/              ← put your flat cover images here (WebP, PNG, JPG)
+│   │   └── marquees/            ← per-game logos matched by filename stem
+│   └── output/
+│       ├── converted/           ← rendered 3-D box art appears here
+│       ├── temp/                ← pipeline scratch space (auto-managed)
+│       └── logs/                ← log files when --log-file="" is used
+└── instructions.txt             ← quick-start guide (generated on first run)
+```
+
+> **Editing profiles:** `profiles/` is yours to modify. Change `profile.json` to
+> adjust geometry, swap `template.png` for a custom box art, or add `logo_game.png`
+> to `assets/` as a system-wide fallback marquee. New built-in profiles released in
+> future versions are added automatically without overwriting your edits.
+
+> **Adding a new profile:** create a subdirectory inside `profiles/` with a
+> `profile.json` and `template.png`. It is immediately available on the next run
+> without restarting or recompiling.
+
+
 
 ```bash
 # 1. Clone and install (see Installation above)
@@ -203,6 +270,12 @@ box3d/
 │
 ├── profiles/                    # Plugin bundles (JSON + template + assets)
 │   ├── mvs/                     # Neo Geo MVS cartridge  703×1000
+│   │   ├── profile.json         # Geometry + spine layout
+│   │   ├── template.png         # RGBA box template
+│   │   └── assets/
+│   │       ├── logo_top.png     # System logo — top of spine
+│   │       ├── logo_bottom.png  # System logo — bottom of spine
+│   │       └── logo_game.png    # Fallback game logo (used when no marquee found)
 │   ├── arcade/                  # Arcade cabinet          665×907
 │   └── dvd/                     # DVD case                633×907
 │
@@ -292,10 +365,16 @@ The MVS profile uses a mostly-transparent template. A DstIn keyed only on the te
 ```
 profiles/
 └── ps2/
-    ├── profile.json    ← required
-    ├── template.png    ← required (RGBA, any size up to 8192 × 8192)
-    └── assets/         ← optional logos and marquees
+    ├── profile.json          ← required
+    ├── template.png          ← required (RGBA, any size up to 8192 × 8192)
+    └── assets/               ← optional
+        ├── logo_top.png      ← system logo placed at the top of the spine
+        ├── logo_bottom.png   ← system logo placed at the bottom of the spine
+        └── logo_game.png     ← fallback game logo (used when no marquee found
+                                 in data/inputs/marquees/ for the current cover)
 ```
+
+Supported extensions for all logo files: `.png`, `.webp`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`.
 
 #### Step 2 — Author the profile JSON
 
@@ -363,13 +442,23 @@ python cli/main.py render --profile ps2 --input tests/assets/ --output /tmp/ps2-
 | `spine_source_frac` | float | no | Fraction of cover width to sample (default `0.20`) |
 | `spine_source` | `left\|right\|center` | no | Edge of cover to sample for spine background |
 | `cover_fit` | `stretch\|fit\|crop` | no | How the cover image fills `cover` dimensions |
-| `spine_layout.game` | `{max_w, max_h, center_y}` | yes | Game-logo slot on the spine |
-| `spine_layout.top` | `{max_w, max_h, center_y}` | no | Top-logo slot on the spine |
-| `spine_layout.bottom` | `{max_w, max_h, center_y}` | no | Bottom-logo slot on the spine |
+| `spine_layout.game` | `{max_w, max_h, center_y, rotate}` | yes | Game-logo slot on the spine |
+| `spine_layout.top` | `{max_w, max_h, center_y, rotate}` | no | Top-logo slot on the spine |
+| `spine_layout.bottom` | `{max_w, max_h, center_y, rotate}` | no | Bottom-logo slot on the spine |
 | `spine_layout.logo_alpha` | float 0–1 | no | Opacity of composited logos (default `0.85`) |
-| `spine_layout.rotate_logos` | bool | no | Rotate logos 90° CW before placement |
+| `spine_layout.*.rotate` | int (degrees) | no | Rotation angle per slot in degrees (PIL convention: negative = CW). Default `0`. |
 
 Each quad point is `[x, y]` in pixel coordinates within `template_size`.
+
+#### Logo resolution order
+
+For each cover, the game logo on the spine is resolved in this order:
+
+1. `data/inputs/marquees/<cover-stem>.*` — dynamic per-game marquee matched by filename.
+2. `profiles/<n>/assets/logo_game.*` — profile-level fallback (e.g. system manufacturer logo).
+3. None — spine is rendered without a game logo.
+
+The `--no-logos` flag disables all logo rendering (game, top, and bottom).
 
 ---
 
@@ -434,6 +523,13 @@ python tests/run_visual_tests.py
 5. Open a pull request against `main`.
 
 **Adding a new built-in profile** follows the same process as [Creating a Profile](#creating-a-profile). Include the `template.png` and at least one end-to-end test in `TestPipeline`.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history of changes, including
+all additions, fixes, and removals since v1.x.
 
 ---
 
