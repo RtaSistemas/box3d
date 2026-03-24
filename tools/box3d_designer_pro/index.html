@@ -362,6 +362,10 @@
 
       <div class="section-body">
 
+        <div class="field"><label>Description</label><input type="text" id="inp-description" placeholder="Box type description" style="width:140px"></div>
+
+        <div class="field"><label>Author</label><input type="text" id="inp-author" placeholder="box3d" style="width:140px"></div>
+
         <div class="field"><label>Spine source</label><select id="sel-spine-source"><option value="left">left</option><option value="right">right</option><option value="center">center</option></select></div>
 
         <div class="field"><label>Cover fit</label><select id="sel-cover-fit"><option value="stretch">stretch</option><option value="fit">fit</option><option value="crop">crop</option></select></div>
@@ -369,8 +373,6 @@
         <div class="field"><label>Source frac</label><input type="number" id="inp-source-frac" value="0.20" min="0.05" max="0.5" step="0.05" style="width:70px"></div>
 
         <div class="field"><label>Logo alpha</label><input type="number" id="inp-logo-alpha" value="0.85" min="0" max="1" step="0.05" style="width:70px"></div>
-
-        <div class="field"><label>Rotate logos</label><input type="checkbox" id="cb-rotate-logos" checked></div>
 
       </div>
 
@@ -482,7 +484,7 @@
 
         <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin-bottom:.4rem;text-transform:uppercase">Game logo</div>
 
-        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
 
           <div class="prop-item"><label>max_w</label><input type="number" id="sp-game-w" value="80"></div>
 
@@ -490,11 +492,13 @@
 
           <div class="prop-item"><label>center_y</label><input type="number" id="sp-game-cy" value="453"></div>
 
+          <div class="prop-item"><label>rotate°</label><input type="number" id="sp-game-rot" value="-90" min="-180" max="180" step="90"></div>
+
         </div>
 
         <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin:.4rem 0;text-transform:uppercase">Top logo</div>
 
-        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
 
           <div class="prop-item"><label>max_w</label><input type="number" id="sp-top-w" value="80"></div>
 
@@ -502,17 +506,21 @@
 
           <div class="prop-item"><label>center_y</label><input type="number" id="sp-top-cy" value="150"></div>
 
+          <div class="prop-item"><label>rotate°</label><input type="number" id="sp-top-rot" value="-90" min="-180" max="180" step="90"></div>
+
         </div>
 
         <div style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);margin:.4rem 0;text-transform:uppercase">Bottom logo</div>
 
-        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="prop-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
 
           <div class="prop-item"><label>max_w</label><input type="number" id="sp-bot-w" value="80"></div>
 
           <div class="prop-item"><label>max_h</label><input type="number" id="sp-bot-h" value="80"></div>
 
           <div class="prop-item"><label>center_y</label><input type="number" id="sp-bot-cy" value="780"></div>
+
+          <div class="prop-item"><label>rotate°</label><input type="number" id="sp-bot-rot" value="-90" min="-180" max="180" step="90"></div>
 
         </div>
 
@@ -684,9 +692,6 @@ function exportProfile(name, objects, templateImg, extras = {}) {
 
   const find = (type) => objects.find(o => o.type === type);
 
-  const toRect = (o) => o ? { x: Math.round(o.x), y: Math.round(o.y), width: Math.round(o.w), height: Math.round(o.h) } : { x:0, y:0, width:0, height:0 };
-
-
   const spine  = find("spine");
 
   const cover  = find("cover");
@@ -695,28 +700,40 @@ function exportProfile(name, objects, templateImg, extras = {}) {
 
   const th = templateImg ? templateImg.naturalHeight : (extras.th || 1000);
 
+  const toSpineSize = (o) => o ? { width: Math.round(o.w), height: Math.round(o.h) } : { width: 0, height: 0 };
 
-  const spineRect = toRect(spine);
+  const makeQuad = (o) => {
+    if (!o) return { tl:[0,0], tr:[0,0], br:[0,0], bl:[0,0] };
+    const x = Math.round(o.x), y = Math.round(o.y), w = Math.round(o.w), h = Math.round(o.h);
+    return { tl:[x,y], tr:[x+w,y], br:[x+w,y+h], bl:[x,y+h] };
+  };
 
-  const coverRect = toRect(cover);
+  const defaultSlot = (slot, fallback) => {
+    const s = extras.spine_layout?.[slot] || {};
+    return {
+      max_w:    s.max_w    ?? fallback.max_w,
+      max_h:    s.max_h    ?? fallback.max_h,
+      center_y: s.center_y ?? fallback.center_y,
+      rotate:   s.rotate   ?? -90
+    };
+  };
 
+  const out = {
 
-  const makeQuad = (r) => ({ tl: [r.x, r.y], tr: [r.x+r.width, r.y], br: [r.x+r.width, r.y+r.height], bl: [r.x, r.y+r.height] });
-
-
-  return {
-
-    name, version: SCHEMA_VERSION, template: "template.png",
+    name,
+    description: extras.description ?? "",
+    version: SCHEMA_VERSION,
+    author: extras.author ?? "box3d",
 
     template_size: { width: tw, height: th },
 
-    spine: { width: spineRect.width,  height: spineRect.height },
+    spine: toSpineSize(spine),
 
-    cover: { width: coverRect.width,  height: coverRect.height },
+    cover: toSpineSize(cover),
 
-    spine_quad: spine?.quad ? spine.quad : makeQuad(spineRect),
+    spine_quad: spine?.quad ? roundQuad(spine.quad) : makeQuad(spine),
 
-    cover_quad: cover?.quad ? cover.quad : makeQuad(coverRect),
+    cover_quad: cover?.quad ? roundQuad(cover.quad) : makeQuad(cover),
 
     spine_source_frac: extras.spine_source_frac ?? 0.20,
 
@@ -724,24 +741,27 @@ function exportProfile(name, objects, templateImg, extras = {}) {
 
     cover_fit:    extras.cover_fit ?? "stretch",
 
-    spine_layout: extras.spine_layout ?? {
-
-      logo_alpha: 0.85, rotate_logos: true,
-
-      game:   { max_w: 80,  max_h: 320, center_y: Math.round(th * 0.5) },
-
-      top:    { max_w: 80,  max_h: 120, center_y: Math.round(th * 0.16) },
-
-      bottom: { max_w: 80,  max_h: 80,  center_y: Math.round(th * 0.84) }
-
+    spine_layout: {
+      game:   defaultSlot("game",   { max_w: 80,  max_h: 320, center_y: Math.round(th * 0.5)  }),
+      top:    defaultSlot("top",    { max_w: 80,  max_h: 120, center_y: Math.round(th * 0.16) }),
+      bottom: defaultSlot("bottom", { max_w: 80,  max_h: 80,  center_y: Math.round(th * 0.84) }),
+      logo_alpha: extras.spine_layout?.logo_alpha ?? 0.85
     },
-
-    logo:    toRect(find("logo")),
-
-    marquee: toRect(find("marquee")),
 
   };
 
+  // Remove description/author se vazios para não poluir profiles mínimos
+  if (!out.description) delete out.description;
+  if (out.author === "box3d") delete out.author;
+
+  return out;
+
+}
+
+
+function roundQuad(q) {
+  const r = (p) => [Math.round(p[0]), Math.round(p[1])];
+  return { tl: r(q.tl), tr: r(q.tr), br: r(q.br), bl: r(q.bl) };
 }
 
 
@@ -1450,6 +1470,12 @@ function loadProfileJSON(file) {
 
 function syncSettingControls(ex) {
 
+  const set = (id, val) => { const el = $(id); if (el && val != null) el.value = val; };
+
+  set("inp-description",  ex.description);
+
+  set("inp-author",        ex.author);
+
   if ($("sel-spine-source") && ex.spine_source) $("sel-spine-source").value = ex.spine_source;
 
   if ($("sel-cover-fit")    && ex.cover_fit)    $("sel-cover-fit").value    = ex.cover_fit;
@@ -1457,8 +1483,6 @@ function syncSettingControls(ex) {
   if ($("inp-source-frac")  && ex.spine_source_frac != null) $("inp-source-frac").value = ex.spine_source_frac;
 
   if ($("inp-logo-alpha")   && ex.spine_layout?.logo_alpha != null) $("inp-logo-alpha").value = ex.spine_layout.logo_alpha;
-
-  if ($("cb-rotate-logos")  && ex.spine_layout?.rotate_logos != null) $("cb-rotate-logos").checked = ex.spine_layout.rotate_logos;
 
 }
 
@@ -1469,11 +1493,11 @@ function syncSpineSlots(sl) {
 
   const set = (id, val) => { const el = $(id); if (el && val != null) el.value = val; };
 
-  set("sp-game-w",  sl.game?.max_w);   set("sp-game-h",  sl.game?.max_h);   set("sp-game-cy", sl.game?.center_y);
+  set("sp-game-w",   sl.game?.max_w);    set("sp-game-h",  sl.game?.max_h);   set("sp-game-cy", sl.game?.center_y);  set("sp-game-rot", sl.game?.rotate   ?? -90);
 
-  set("sp-top-w",   sl.top?.max_w);    set("sp-top-h",   sl.top?.max_h);    set("sp-top-cy",  sl.top?.center_y);
+  set("sp-top-w",    sl.top?.max_w);     set("sp-top-h",   sl.top?.max_h);    set("sp-top-cy",  sl.top?.center_y);   set("sp-top-rot",  sl.top?.rotate    ?? -90);
 
-  set("sp-bot-w",   sl.bottom?.max_w); set("sp-bot-h",   sl.bottom?.max_h); set("sp-bot-cy",  sl.bottom?.center_y);
+  set("sp-bot-w",    sl.bottom?.max_w);  set("sp-bot-h",   sl.bottom?.max_h); set("sp-bot-cy",  sl.bottom?.center_y); set("sp-bot-rot", sl.bottom?.rotate  ?? -90);
 
 }
 
@@ -1581,6 +1605,10 @@ function wireUI() {
   });
 
 
+  $("inp-description").addEventListener("input", refreshJson);
+
+  $("inp-author").addEventListener("input",      refreshJson);
+
   $("sel-spine-source").addEventListener("change", e => { extras.spine_source = e.target.value; refreshJson(); });
 
   $("sel-cover-fit").addEventListener("change",    e => { extras.cover_fit    = e.target.value; refreshJson(); });
@@ -1589,16 +1617,28 @@ function wireUI() {
 
   $("inp-logo-alpha").addEventListener("input",    e => { extras.spine_layout = extras.spine_layout || {}; extras.spine_layout.logo_alpha = parseFloat(e.target.value); refreshJson(); });
 
-  $("cb-rotate-logos").addEventListener("change",  e => { extras.spine_layout = extras.spine_layout || {}; extras.spine_layout.rotate_logos = e.target.checked; refreshJson(); });
 
+  const spSlot = (id, slot, key, parser) => {
 
-  const spSlot = (id, slot, key) => { $(id)?.addEventListener("input", e => { extras.spine_layout = extras.spine_layout || {}; extras.spine_layout[slot] = extras.spine_layout[slot] || {}; extras.spine_layout[slot][key] = parseInt(e.target.value); refreshJson(); }); };
+    $(id)?.addEventListener("input", e => {
 
-  spSlot("sp-game-w","game","max_w");  spSlot("sp-game-h","game","max_h");  spSlot("sp-game-cy","game","center_y");
+      extras.spine_layout = extras.spine_layout || {};
 
-  spSlot("sp-top-w","top","max_w");    spSlot("sp-top-h","top","max_h");    spSlot("sp-top-cy","top","center_y");
+      extras.spine_layout[slot] = extras.spine_layout[slot] || {};
 
-  spSlot("sp-bot-w","bottom","max_w"); spSlot("sp-bot-h","bottom","max_h"); spSlot("sp-bot-cy","bottom","center_y");
+      extras.spine_layout[slot][key] = (parser || parseInt)(e.target.value);
+
+      refreshJson();
+
+    });
+
+  };
+
+  spSlot("sp-game-w","game","max_w");    spSlot("sp-game-h","game","max_h");    spSlot("sp-game-cy","game","center_y");    spSlot("sp-game-rot","game","rotate");
+
+  spSlot("sp-top-w","top","max_w");      spSlot("sp-top-h","top","max_h");      spSlot("sp-top-cy","top","center_y");      spSlot("sp-top-rot","top","rotate");
+
+  spSlot("sp-bot-w","bottom","max_w");   spSlot("sp-bot-h","bottom","max_h");   spSlot("sp-bot-cy","bottom","center_y");   spSlot("sp-bot-rot","bottom","rotate");
 
 
   $("canvas-area").addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
@@ -1766,23 +1806,29 @@ function refreshJson() {
 
 function collectExtras() {
 
-  const iv = id => parseInt($(id)?.value) || 0;
+  const iv  = id => { const v = parseInt($(id)?.value); return isNaN(v) ? 0 : v; };
 
-  extras.spine_source = $("sel-spine-source").value; extras.cover_fit = $("sel-cover-fit").value;
+  const fv  = id => parseFloat($(id)?.value) || 0;
 
-  extras.spine_source_frac = parseFloat($("inp-source-frac").value) || 0.20;
+  extras.description       = $("inp-description")?.value || "";
+
+  extras.author            = $("inp-author")?.value      || "box3d";
+
+  extras.spine_source      = $("sel-spine-source").value;
+
+  extras.cover_fit         = $("sel-cover-fit").value;
+
+  extras.spine_source_frac = fv("inp-source-frac") || 0.20;
 
   extras.spine_layout = extras.spine_layout || {};
 
-  extras.spine_layout.logo_alpha = parseFloat($("inp-logo-alpha").value) || 0.85;
+  extras.spine_layout.logo_alpha = fv("inp-logo-alpha") || 0.85;
 
-  extras.spine_layout.rotate_logos = $("cb-rotate-logos").checked;
+  extras.spine_layout.game   = { max_w: iv("sp-game-w"), max_h: iv("sp-game-h"), center_y: iv("sp-game-cy"), rotate: iv("sp-game-rot") };
 
-  extras.spine_layout.game = { max_w: iv("sp-game-w"), max_h: iv("sp-game-h"), center_y: iv("sp-game-cy") };
+  extras.spine_layout.top    = { max_w: iv("sp-top-w"),  max_h: iv("sp-top-h"),  center_y: iv("sp-top-cy"),  rotate: iv("sp-top-rot")  };
 
-  extras.spine_layout.top = { max_w: iv("sp-top-w"), max_h: iv("sp-top-h"), center_y: iv("sp-top-cy") };
-
-  extras.spine_layout.bottom = { max_w: iv("sp-bot-w"), max_h: iv("sp-bot-h"), center_y: iv("sp-bot-cy") };
+  extras.spine_layout.bottom = { max_w: iv("sp-bot-w"),  max_h: iv("sp-bot-h"),  center_y: iv("sp-bot-cy"),  rotate: iv("sp-bot-rot")  };
 
 }
 
