@@ -38,4 +38,4 @@ if [ ! -d "$DATA_DIR" ]; then
 fi
 
 # Mantém a configuração original de PYTHONPATH e execução
-PYTHONPATH="${SCRIPT_DIR}/src" exec python3 cli/main.py "$@"
+PYTHONPATH="${SCRIPT_DIR}" exec python3 cli/main.py "$@"
