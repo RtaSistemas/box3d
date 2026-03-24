@@ -5,6 +5,27 @@ work was validated by the full test suite (`pytest tests/test_v2.py`) before clo
 
 ---
 
+## Sprint 6 — Game Logo Fallback & First-Run Experience
+
+**Scope:** `cli/main.py`, `core/pipeline.py`, `tests/test_v2.py`, `README.md`
+**Status:** Done
+
+### Deliverables
+
+| # | Deliverable | File | Detail |
+|---|---|---|---|
+| 6.1 | Game logo fallback | `core/pipeline.py` | `_load_game_logo()` resolves in two stages: `marquees_dir/<stem>.*` then `profile/assets/logo_game.*`; three new tests in `TestGameLogoFallback` |
+| 6.2 | `instructions.txt` on first run | `cli/main.py` | `_bootstrap_instructions()` writes a plain-text offline guide next to the executable on the first run only (never overwritten); covers folder layout, file naming, all render flags, aux commands, and "add a profile" steps |
+
+### Acceptance criteria
+
+- `pytest tests/test_v2.py -v` → **52 passed**.
+- First run creates `instructions.txt` next to the executable (or at project root in dev).
+- Subsequent runs leave `instructions.txt` untouched even if content differs.
+- `box3d render -p mvs` resolves game logo as: `marquees_dir` stem → `profile/assets/logo_game.*` → None.
+
+---
+
 ## Sprint 5 — PyInstaller Readiness & Release Closure
 
 **Scope:** `cli/main.py`, `core/models.py`, `core/pipeline.py`, `engine/blending.py`,
