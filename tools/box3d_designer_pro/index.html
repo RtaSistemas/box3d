@@ -1130,7 +1130,10 @@ class CanvasEngine {
 
     const rect = this.el.getBoundingClientRect();
 
-    return { x: (e.clientX - rect.left) * (this.el.width / rect.width), y: (e.clientY - rect.top) * (this.el.height / rect.height) };
+    if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
+
+    // rect already accounts for CSS scale transform, so divide by zoom to get canvas coords
+    return { x: (e.clientX - rect.left) / this.zoom, y: (e.clientY - rect.top) / this.zoom };
 
   }
 
@@ -1190,6 +1193,9 @@ class CanvasEngine {
     window.addEventListener("mousemove", e => {
 
       if (!this._drag) return;
+
+      // Guard: abort drag if selected object was removed from the list
+      if (!this.selected || !this.objects.includes(this.selected)) { this._drag = null; return; }
 
       const { x: mx, y: my } = this._toCanvas(e);
 
@@ -1275,6 +1281,10 @@ class CanvasEngine {
 
       if (!this.selected) return;
 
+      // Don't intercept keyboard when user is typing in an input/textarea/select
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
       const step = e.shiftKey ? 10 : 1, obj = this.selected;
 
       let dx = 0, dy = 0;
@@ -1329,7 +1339,7 @@ class CanvasEngine {
 
   on(event, fn)         { (this._handlers[event] = this._handlers[event] || []).push(fn); }
 
-  _emit(event, ...args) { (this._handlers[event] || []).forEach(fn => fn(...args)); }
+  _emit(event, ...args) { (this._handlers[event] || []).forEach(fn => { try { fn(...args); } catch(err) { console.error(`[CanvasEngine] handler error for "${event}":`, err); } }); }
 
 }
 
@@ -1364,7 +1374,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initSections();
 
-  refreshJson();
+  buildObjList(); refreshJson();
 
   setTimeout(() => engine.fitToScreen($("canvas-area").clientWidth, $("canvas-area").clientHeight), 50);
 
@@ -1659,11 +1669,28 @@ function onSelect(obj) {
 }
 
 
+function _updateObjListCoords() {
+
+  const items = $$(".obj-item");
+
+  engine.objects.forEach((o, i) => {
+
+    const coords = items[i]?.querySelector(".obj-coords");
+
+    if (coords) coords.textContent = `${Math.round(o.x)},${Math.round(o.y)}`;
+
+  });
+
+}
+
+
 function onObjectChange(obj) {
+
+  _updateObjListCoords();
 
   // Usa atualização leve se os inputs já estiverem em foco para evitar perdas
 
-  if (document.activeElement.tagName === 'INPUT') {
+  if (document.activeElement?.tagName === 'INPUT') {
 
     ["x","y","width","height"].forEach(key => {
 
@@ -1734,26 +1761,39 @@ function buildObjList() {
 
   if (engine.objects.length === 0) { list.innerHTML = `<div style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);text-align:center;padding:.5rem 0">No objects — add one above</div>`; return; }
 
-  engine.objects.forEach(obj => {
+  engine.objects.forEach((obj, idx) => {
 
     const item = document.createElement("div");
 
-    item.className = "obj-item" + (engine.selected === obj ? " active" : ""); item.dataset.type = obj.type;
+    item.className = "obj-item" + (engine.selected === obj ? " active" : ""); item.dataset.type = obj.type; item.dataset.objIdx = idx;
 
     item.innerHTML = `<div class="obj-swatch swatch-${obj.type}"></div><span class="obj-name">${obj.type}</span><span class="obj-coords">${Math.round(obj.x)},${Math.round(obj.y)}</span>`;
-
-    item.addEventListener("click", () => { engine.selected = obj; engine.redraw(); onSelect(obj); });
 
     list.appendChild(item);
 
   });
+
+  // Single delegated listener — set once, replaced on each rebuild (innerHTML clears old children)
+  list.onclick = e => {
+
+    const item = e.target.closest(".obj-item");
+
+    if (!item) return;
+
+    const idx = parseInt(item.dataset.objIdx);
+
+    const obj = engine.objects[idx];
+
+    if (obj) { engine.selected = obj; engine.redraw(); onSelect(obj); }
+
+  };
 
 }
 
 
 function refreshJson() {
 
-  buildObjList(); collectExtras();
+  collectExtras();
 
   const name = $("profile-name-input").value || "untitled";
 
