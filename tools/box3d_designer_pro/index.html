@@ -939,7 +939,9 @@ class CanvasEngine {
 
     const map = { x:"x", y:"y", width:"w", height:"h" };
 
-    if (map[key]) { this.selected[map[key]] = n; this.redraw(); this._emit("change", this.selected); }
+    const isDim = key === "width" || key === "height";
+
+    if (map[key]) { this.selected[map[key]] = isDim ? Math.max(MIN_DIM, n) : n; this.redraw(); this._emit("change", this.selected); }
 
   }
 
@@ -1410,7 +1412,11 @@ function loadTemplate(file) {
 
   const img = new Image();
 
+  const objectUrl = URL.createObjectURL(file);
+
   img.onload = () => {
+
+    URL.revokeObjectURL(objectUrl);
 
     tplImg = img; engine.setTemplate(img);
 
@@ -1422,7 +1428,9 @@ function loadTemplate(file) {
 
   };
 
-  img.src = URL.createObjectURL(file);
+  img.onerror = () => { URL.revokeObjectURL(objectUrl); toast("Failed to load image", true); };
+
+  img.src = objectUrl;
 
 }
 
@@ -1664,7 +1672,9 @@ function onSelect(obj) {
 
  
 
-  $$(".obj-item").forEach(el => el.classList.toggle("active", obj && el.dataset.type === obj.type));
+  const selectedIdx = obj ? engine.objects.indexOf(obj) : -1;
+
+  $$(".obj-item").forEach(el => el.classList.toggle("active", selectedIdx !== -1 && parseInt(el.dataset.objIdx) === selectedIdx));
 
 }
 
