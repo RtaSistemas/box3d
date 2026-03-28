@@ -86,11 +86,13 @@
 
     #panel-left { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; gap: 0; }
 
-    #canvas-area { background: var(--bg); overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+    #canvas-area { background: var(--bg); overflow: hidden; position: relative; }
 
-    #canvas-wrap { position: relative; transform-origin: center; }
+    #canvas-wrap { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
 
     #main-canvas { display: block; cursor: crosshair; }
+
+    #main-canvas.panning { cursor: grabbing; }
 
     #canvas-hint { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); font-family: var(--font-mono); font-size: .7rem; color: var(--text-dim); pointer-events: none; }
 
@@ -451,7 +453,7 @@
 
     </div>
 
-    <div id="canvas-hint">Drag to move · Corner handles to resize · Drop template or profile.json here</div>
+    <div id="canvas-hint">Drag to move · Corner handles to resize · Scroll to zoom · Space+drag or middle-mouse to pan · Drop template or profile.json here</div>
 
   </main>
 
@@ -843,6 +845,16 @@ class CanvasEngine {
 
     this.zoom    = 1;
 
+    this.panX    = 0;
+
+    this.panY    = 0;
+
+    this._panning   = false;  // middle-mouse or Space+drag pan
+
+    this._panStart  = null;   // { x, y, panX, panY }
+
+    this._spaceDown = false;
+
     this.gridSize  = 10;
 
     this.snapToGrid  = true;
@@ -920,22 +932,58 @@ class CanvasEngine {
   }
 
 
-  setZoom(z) {
+  _applyTransform() {
 
-    this.zoom = Math.max(.1, Math.min(4, z));
+    this.el.parentElement.style.transform =
+      `translate(${this.panX}px,${this.panY}px) scale(${this.zoom})`;
 
-    this.el.style.transform = `scale(${this.zoom})`;
+  }
+
+
+  setZoom(z, originX, originY) {
+
+    // originX/Y in viewport coords — keep that canvas point fixed while zooming
+    const prevZoom = this.zoom;
+
+    this.zoom = Math.max(.1, Math.min(8, z));
+
+    if (originX !== undefined) {
+
+      this.panX = originX - (originX - this.panX) * (this.zoom / prevZoom);
+
+      this.panY = originY - (originY - this.panY) * (this.zoom / prevZoom);
+
+    }
+
+    this._applyTransform();
 
     this._emit("zoom", this.zoom);
 
   }
 
 
+  setPan(x, y) {
+
+    this.panX = x; this.panY = y;
+
+    this._applyTransform();
+
+  }
+
+
   fitToScreen(containerW, containerH) {
 
-    const z  = Math.min((containerW - 40) / this.el.width, (containerH - 40) / this.el.height, 1);
+    const z = Math.min((containerW - 40) / this.el.width, (containerH - 40) / this.el.height, 1);
 
-    this.setZoom(z);
+    this.zoom = Math.max(.1, Math.min(8, z));
+
+    this.panX = Math.round((containerW  - this.el.width  * this.zoom) / 2);
+
+    this.panY = Math.round((containerH - this.el.height * this.zoom) / 2);
+
+    this._applyTransform();
+
+    this._emit("zoom", this.zoom);
 
   }
 
@@ -1156,6 +1204,89 @@ class CanvasEngine {
 
   _bindEvents() {
 
+    // ── Wheel zoom (zoom-to-cursor) ─────────────────────────────────────────
+    this.el.parentElement.addEventListener("wheel", e => {
+
+      e.preventDefault();
+
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+
+      // viewport coords of cursor relative to canvas-area
+      const areaRect = this.el.parentElement.parentElement.getBoundingClientRect();
+
+      this.setZoom(this.zoom * factor, e.clientX - areaRect.left, e.clientY - areaRect.top);
+
+    }, { passive: false, signal: this._ac.signal });
+
+
+    // ── Middle-mouse pan ────────────────────────────────────────────────────
+    this.el.addEventListener("mousedown", e => {
+
+      if (e.button === 1) {
+
+        e.preventDefault();
+
+        this._panning = true;
+
+        this._panStart = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY };
+
+        this.el.classList.add("panning");
+
+        return;
+
+      }
+
+    });
+
+
+    // ── Space+drag pan ──────────────────────────────────────────────────────
+    const sigW = { signal: this._ac.signal };
+
+    window.addEventListener("keydown", e => {
+
+      if (e.code === "Space" && !this._spaceDown) {
+
+        const tag = document.activeElement?.tagName;
+
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+        e.preventDefault(); this._spaceDown = true; this.el.style.cursor = "grab";
+
+      }
+
+    }, sigW);
+
+    window.addEventListener("keyup", e => {
+
+      if (e.code === "Space") {
+
+        this._spaceDown = false;
+
+        if (!this._panning) this.el.style.cursor = "";
+
+      }
+
+    }, sigW);
+
+    this.el.addEventListener("mousedown", e => {
+
+      if (e.button === 0 && this._spaceDown) {
+
+        e.preventDefault(); e.stopPropagation();
+
+        this._panning = true;
+
+        this._panStart = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY };
+
+        this.el.classList.add("panning");
+
+        return;
+
+      }
+
+    });
+
+
     this.el.addEventListener("mousedown", e => {
 
       e.preventDefault();
@@ -1206,6 +1337,18 @@ class CanvasEngine {
     const sig = { signal: this._ac.signal };
 
     window.addEventListener("mousemove", e => {
+
+      if (this._panning && this._panStart) {
+
+        this.panX = this._panStart.panX + (e.clientX - this._panStart.x);
+
+        this.panY = this._panStart.panY + (e.clientY - this._panStart.y);
+
+        this._applyTransform();
+
+        return;
+
+      }
 
       if (!this._drag) return;
 
@@ -1288,7 +1431,21 @@ class CanvasEngine {
     }, sig);
 
 
-    window.addEventListener("mouseup", () => { this._drag = null; }, sig);
+    window.addEventListener("mouseup", () => {
+
+      this._drag = null;
+
+      if (this._panning) {
+
+        this._panning = false; this._panStart = null;
+
+        this.el.classList.remove("panning");
+
+        this.el.style.cursor = this._spaceDown ? "grab" : "";
+
+      }
+
+    }, sig);
 
    
 
@@ -1561,9 +1718,17 @@ function wireUI() {
   $("cb-scanlines").addEventListener("change", e => document.body.classList.toggle("scanlines", e.target.checked));
 
 
-  $("btn-zoom-in").addEventListener("click",  () => engine.setZoom(engine.zoom * 1.25));
+  const zoomToCenter = f => {
 
-  $("btn-zoom-out").addEventListener("click", () => engine.setZoom(engine.zoom * 0.8));
+    const r = $("canvas-area").getBoundingClientRect();
+
+    engine.setZoom(engine.zoom * f, r.width / 2, r.height / 2);
+
+  };
+
+  $("btn-zoom-in").addEventListener("click",  () => zoomToCenter(1.25));
+
+  $("btn-zoom-out").addEventListener("click", () => zoomToCenter(0.8));
 
   $("btn-zoom-fit").addEventListener("click", () => { engine.fitToScreen($("canvas-area").clientWidth, $("canvas-area").clientHeight); });
 
