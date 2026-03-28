@@ -691,6 +691,10 @@ function exportProfile(name, objects, templateImg, extras = {}) {
 
   const cover  = find("cover");
 
+  if (!spine) throw new Error("Profile must contain a spine object");
+
+  if (!cover) throw new Error("Profile must contain a cover object");
+
   const tw = templateImg ? templateImg.naturalWidth  : (extras.tw || 700);
 
   const th = templateImg ? templateImg.naturalHeight : (extras.th || 1000);
@@ -851,9 +855,14 @@ class CanvasEngine {
 
     this._handlers = {};
 
+    this._ac = new AbortController();
+
     this._bindEvents();
 
   }
+
+
+  destroy() { this._ac.abort(); }
 
 
   setTemplate(img) {
@@ -870,6 +879,8 @@ class CanvasEngine {
 
 
   addObject(type) {
+
+    if (this.objects.some(o => o.type === type)) return null;
 
     const w = this.el.width  * .35 | 0;
 
@@ -1192,6 +1203,8 @@ class CanvasEngine {
     });
 
 
+    const sig = { signal: this._ac.signal };
+
     window.addEventListener("mousemove", e => {
 
       if (!this._drag) return;
@@ -1272,10 +1285,10 @@ class CanvasEngine {
 
       this.redraw(); this._emit("change", obj);
 
-    });
+    }, sig);
 
 
-    window.addEventListener("mouseup", () => { this._drag = null; });
+    window.addEventListener("mouseup", () => { this._drag = null; }, sig);
 
    
 
@@ -1334,7 +1347,7 @@ class CanvasEngine {
 
       }
 
-    });
+    }, sig);
 
   }
 
@@ -1522,7 +1535,15 @@ function wireUI() {
 
   ["logo","marquee","spine","cover"].forEach(t => {
 
-    $(`btn-add-${t}`)?.addEventListener("click", () => { engine.addObject(t); buildObjList(); refreshJson(); });
+    $(`btn-add-${t}`)?.addEventListener("click", () => {
+
+      const obj = engine.addObject(t);
+
+      if (!obj) { toast(`"${t}" already exists — remove it first`, true); return; }
+
+      buildObjList(); refreshJson();
+
+    });
 
   });
 
@@ -1807,9 +1828,17 @@ function refreshJson() {
 
   const name = $("profile-name-input").value || "untitled";
 
-  const profile = exportProfile(name, engine.objects, tplImg, extras);
+  try {
 
-  $("json-preview").textContent = JSON.stringify(profile, null, 2);
+    const profile = exportProfile(name, engine.objects, tplImg, extras);
+
+    $("json-preview").textContent = JSON.stringify(profile, null, 2);
+
+  } catch (err) {
+
+    $("json-preview").textContent = `// ${err.message}`;
+
+  }
 
 }
 
@@ -1841,9 +1870,13 @@ function doExportJSON() {
 
   collectExtras(); const name = $("profile-name-input").value || "untitled";
 
-  downloadFile(JSON.stringify(exportProfile(name, engine.objects, tplImg, extras), null, 2), `${name}.json`);
+  try {
 
-  toast("profile.json exported");
+    downloadFile(JSON.stringify(exportProfile(name, engine.objects, tplImg, extras), null, 2), `${name}.json`);
+
+    toast("profile.json exported");
+
+  } catch (err) { toast(err.message, true); }
 
 }
 
@@ -1852,9 +1885,13 @@ function doExportPython() {
 
   collectExtras(); const name = $("profile-name-input").value || "untitled";
 
-  downloadFile(exportPython(exportProfile(name, engine.objects, tplImg, extras)), `${name}.py`, "text/plain");
+  try {
 
-  toast("Python snippet exported");
+    downloadFile(exportPython(exportProfile(name, engine.objects, tplImg, extras)), `${name}.py`, "text/plain");
+
+    toast("Python snippet exported");
+
+  } catch (err) { toast(err.message, true); }
 
 }
 
