@@ -1,0 +1,171 @@
+box3d v{{VERSION}} — Quick-Start Guide
+====================================================
+
+Generated automatically on first run. Edit freely — this file is never
+overwritten by the application.
+
+FOLDER STRUCTURE
+----------------
+
+  <this folder>/
+  ├── box3d-linux-x64   (or box3d-windows-x64.exe)
+  ├── instructions.txt  ← this file
+  ├── profiles/         ← plugin profiles (edit freely, never overwritten)
+  │   ├── mvs/
+  │   │   ├── profile.json      geometry + spine layout
+  │   │   ├── template.png      RGBA box art template
+  │   │   └── assets/
+  │   │       ├── logo_top.png       system logo — top of spine
+  │   │       ├── logo_bottom.png    system logo — bottom of spine
+  │   │       └── logo_game.png      fallback game logo (optional)
+  │   ├── arcade/  (same structure)
+  │   └── dvd/     (same structure)
+  └── data/
+      ├── inputs/
+      │   ├── covers/       ← PUT YOUR COVER IMAGES HERE
+      │   └── marquees/     ← per-game logos (matched by filename stem)
+      └── output/
+          ├── converted/    ← rendered 3-D box art appears here
+          ├── temp/         ← auto-managed scratch space
+          └── logs/         ← log files (use --log-file "")
+
+FILE NAMING CONVENTIONS
+-----------------------
+
+  Cover images:   any name, any supported format
+                  (WebP, PNG, JPG, JPEG, BMP, TIFF)
+
+  Marquees:       <cover-stem>.<ext>
+                  Example: cover sf2.webp → marquee sf2.png
+
+  Game logo fallback (inside profile assets/):
+                  logo_game.<ext>
+                  Used when no matching marquee is found in data/inputs/marquees/
+
+  System logos (inside profile assets/):
+                  logo_top.<ext>
+                  logo_bottom.<ext>
+
+GLOBAL OPTIONS
+--------------
+
+  These flags apply to ALL commands and must be placed BEFORE the subcommand.
+
+  box3d [global options] <command> [command options]
+
+      --profiles-dir <dir>   Profiles directory to load from
+                             Default: profiles/ next to the executable
+                             Use this to load profiles from any external path.
+                             Example: box3d --profiles-dir ~/my-profiles render -p ps2
+
+      --verbose / -v         Enable DEBUG-level logging
+      --log-file  <path>     Write log to file (pass "" for default location)
+
+RENDER COMMAND — ALL OPTIONS
+-----------------------------
+
+  box3d render --profile <name> [options]
+
+  REQUIRED
+    -p, --profile <name>       Profile to use (mvs | arcade | dvd | custom)
+
+  INPUT / OUTPUT
+    -i, --input   <dir>        Cover images directory
+                               Default: data/inputs/covers/
+    -o, --output  <dir>        Output directory
+                               Default: data/output/converted/
+    -f, --output-format <fmt>  Output format: webp (default) | png
+
+  SPINE APPEARANCE
+    -b, --blur-radius <n>      Gaussian blur on spine background  (default: 20, must be >= 0)
+    -d, --darken      <n>      Dark overlay intensity 0–255       (default: 180)
+        --rgb <R,G,B>          RGB channel multipliers, comma-separated (default: 1.0,1.0,1.0)
+                               Example: --rgb 1.1,1.0,0.9  (warm tone)
+                               Values > 1 brighten, < 1 darken. Must be >= 0.
+        --spine-source <edge>  Cover edge to sample: left | right | center
+        --cover-fit    <mode>  Cover scaling: stretch | fit | crop
+
+  LOGOS
+        --no-logos             Disable all logo overlays
+        --no-rotate            Force all logo rotations to 0°
+        --top-logo    <file>   Override top spine logo
+        --bottom-logo <file>   Override bottom spine logo
+        --marquees-dir <dir>   Override marquees directory
+
+  EXECUTION
+    -w, --workers  <n>         Parallel render threads  (default: 4)
+    -s, --skip-existing        Skip covers already rendered
+        --dry-run              Validate inputs without writing output
+    -v, --verbose              Enable DEBUG-level logging
+        --log-file  <path>     Write log to file (pass "" for default location)
+
+QUICK EXAMPLES
+--------------
+
+  # Render all covers with the MVS profile
+  box3d render -p mvs
+
+  # Arcade profile, 8 workers, PNG output, warm colour tone
+  box3d render -p arcade -w 8 --output-format png --rgb 1.1,1.0,0.9
+
+  # Preview run — no files written
+  box3d render -p dvd --dry-run --verbose
+
+  # Only process covers not yet rendered
+  box3d render -p mvs --skip-existing
+
+  # Custom spine: strong dark overlay, cool colour shift, crop-fit cover
+  box3d render -p arcade --darken 220 --rgb 0.85,0.9,1.15 --cover-fit crop
+
+OTHER COMMANDS
+--------------
+
+  box3d profiles list       List all available profiles with geometry info
+  box3d profiles validate   Check each profile for missing files / OOM bounds
+  box3d designer            Open the visual profile editor in the browser
+
+ADDING A NEW PROFILE
+--------------------
+
+  1. Create a directory inside profiles/:
+       profiles/myprofile/
+
+  2. Add the required files:
+       profile.json    — geometry and spine layout (see built-in examples)
+       template.png    — RGBA box art template (max 8192 × 8192 px)
+
+  3. Optionally add to profiles/myprofile/assets/:
+       logo_top.png        system logo top of spine
+       logo_bottom.png     system logo bottom of spine
+       logo_game.png       fallback game logo
+
+  4. Use the Designer Pro to adjust quad coordinates:
+       box3d designer
+
+  5. Test the new profile:
+       box3d render -p myprofile --dry-run --verbose
+
+The profile is available immediately — no restart required.
+
+EXTERNAL / CUSTOM PROFILES
+---------------------------
+
+  You can store profiles anywhere on your system and point box3d to them
+  using the --profiles-dir global flag:
+
+    box3d --profiles-dir /path/to/my-profiles render -p myprofile
+
+  This is useful when:
+  - You want profiles on a shared or network drive
+  - You are using the standalone executable and prefer to keep profiles
+    in a separate folder that survives updates
+  - You maintain multiple profile sets for different systems
+
+  Copy a built-in profile as a starting point:
+
+    cp -r profiles/mvs /path/to/my-profiles/ps2
+    # edit /path/to/my-profiles/ps2/profile.json and template.png
+    box3d --profiles-dir /path/to/my-profiles render -p ps2
+
+  Windows example:
+    box3d-windows-x64.exe --profiles-dir C:\MyProfiles render -p ps2
