@@ -20,18 +20,41 @@ def solve_coefficients(
     """
     Solve the 8-coefficient perspective transform mapping *src_pts* to
     *dst_pts*.
+
+    The system Ax = b is assembled via NumPy advanced indexing (no Python
+    loops), reducing interpreter overhead before the np.linalg.solve call.
     """
-    matrix: list[list[float]] = []
-    for (dx, dy), (sx, sy) in zip(dst_pts, src_pts):
-        matrix.append([dx, dy, 1, 0,  0,  0, -sx * dx, -sx * dy])
-        matrix.append([0,  0,  0, dx, dy, 1, -sy * dx, -sy * dy])
+    src = np.array(src_pts, dtype=np.float64)  # (4, 2)
+    dst = np.array(dst_pts, dtype=np.float64)  # (4, 2)
 
-    A = np.array(matrix, dtype=np.float64)
-    b: list[float] = []
-    for _, (sx, sy) in zip(dst_pts, src_pts):
-        b.extend([sx, sy])
+    sx, sy = src[:, 0], src[:, 1]
+    dx, dy = dst[:, 0], dst[:, 1]
 
-    coeffs = np.linalg.solve(A, np.array(b, dtype=np.float64))
+    # A is 8x8; rows interleaved: even → x equation, odd → y equation
+    A = np.zeros((8, 8), dtype=np.float64)
+    even = np.arange(0, 8, 2)  # [0, 2, 4, 6]
+    odd  = np.arange(1, 8, 2)  # [1, 3, 5, 7]
+
+    # Even rows: [dx, dy, 1, 0, 0, 0, -sx*dx, -sx*dy]
+    A[even, 0] = dx
+    A[even, 1] = dy
+    A[even, 2] = 1.0
+    A[even, 6] = -sx * dx
+    A[even, 7] = -sx * dy
+
+    # Odd rows:  [0, 0, 0, dx, dy, 1, -sy*dx, -sy*dy]
+    A[odd, 3] = dx
+    A[odd, 4] = dy
+    A[odd, 5] = 1.0
+    A[odd, 6] = -sy * dx
+    A[odd, 7] = -sy * dy
+
+    # b vector: interleaved source coordinates [sx0, sy0, sx1, sy1, ...]
+    b = np.empty(8, dtype=np.float64)
+    b[even] = sx
+    b[odd]  = sy
+
+    coeffs = np.linalg.solve(A, b)
     return tuple(float(c) for c in coeffs)
 
 
