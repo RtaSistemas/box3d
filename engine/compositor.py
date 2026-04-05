@@ -41,6 +41,16 @@ def compose_cover(
     Pure function: no disk I/O, no side effects.
     Returns the final composited RGBA image.
     """
+    # Contract assertions — validate inputs at the public boundary
+    assert cover_img is not None, "cover_img must not be None"
+    assert cover_img.mode == "RGBA", \
+        f"cover_img must be RGBA mode, got {cover_img.mode!r}"
+    assert cover_img.width > 0 and cover_img.height > 0, \
+        f"cover_img dimensions must be positive, got {cover_img.size}"
+    if template_img is not None:
+        assert template_img.mode == "RGBA", \
+            f"template_img must be RGBA mode, got {template_img.mode!r}"
+
     geom   = _effective_geometry(profile, options)
     layout = _effective_layout(profile, options)
 

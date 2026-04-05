@@ -825,3 +825,134 @@ class TestPipelineEngineIoPurge:
         assert stats["dry"] == 1
         out_dir = tmp_path / "out"
         assert not out_dir.exists() or not any(out_dir.iterdir())
+
+
+# ===========================================================================
+# BLOCO 2 — Internal engine asserts
+# ===========================================================================
+
+class TestEngineAsserts:
+    """Verify that asserts in engine/ fire correctly on invalid inputs."""
+
+    # ------------------------------------------------------------------
+    # compose_cover() — public boundary asserts
+    # ------------------------------------------------------------------
+
+    def test_compose_cover_rejects_none_cover(self):
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        template = Image.open(profile.template_path).convert("RGBA")
+        with pytest.raises(AssertionError, match="cover_img must not be None"):
+            from engine.compositor import compose_cover
+            compose_cover(
+                cover_img=None, profile=profile,
+                options=RenderOptions(), template_img=template,
+            )
+
+    def test_compose_cover_rejects_non_rgba_cover(self):
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        template = Image.open(profile.template_path).convert("RGBA")
+        rgb_cover = Image.new("RGB", (100, 200), (100, 150, 200))
+        with pytest.raises(AssertionError, match="RGBA mode"):
+            compose_cover(
+                cover_img=rgb_cover, profile=profile,
+                options=RenderOptions(), template_img=template,
+            )
+
+    def test_compose_cover_rejects_non_rgba_template(self):
+        from engine.compositor import compose_cover
+        profile = ProfileRegistry(PROFILES).load().get("mvs")
+        cover   = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        rgb_tpl = Image.new("RGB", (703, 1000), (0, 0, 0))
+        with pytest.raises(AssertionError, match="RGBA mode"):
+            compose_cover(
+                cover_img=cover, profile=profile,
+                options=RenderOptions(), template_img=rgb_tpl,
+            )
+
+    # ------------------------------------------------------------------
+    # build_spine() — geometry and layout asserts
+    # ------------------------------------------------------------------
+
+    def _base_geom(self, name="mvs"):
+        return ProfileRegistry(PROFILES).load().get(name).geometry
+
+    def _base_layout(self, name="mvs"):
+        return ProfileRegistry(PROFILES).load().get(name).layout
+
+    def test_build_spine_rejects_negative_blur(self):
+        from engine.spine_builder import build_spine
+        cover = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        with pytest.raises(AssertionError, match="blur_radius"):
+            build_spine(
+                cover=cover, geom=self._base_geom(), layout=self._base_layout(),
+                blur_radius=-1, darken_alpha=180,
+                game_logo=None, top_logo=None, bottom_logo=None,
+            )
+
+    def test_build_spine_rejects_darken_out_of_range(self):
+        from engine.spine_builder import build_spine
+        cover = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        with pytest.raises(AssertionError, match="darken_alpha"):
+            build_spine(
+                cover=cover, geom=self._base_geom(), layout=self._base_layout(),
+                blur_radius=20, darken_alpha=300,
+                game_logo=None, top_logo=None, bottom_logo=None,
+            )
+
+    def test_build_spine_rejects_darken_negative(self):
+        from engine.spine_builder import build_spine
+        cover = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        with pytest.raises(AssertionError, match="darken_alpha"):
+            build_spine(
+                cover=cover, geom=self._base_geom(), layout=self._base_layout(),
+                blur_radius=20, darken_alpha=-1,
+                game_logo=None, top_logo=None, bottom_logo=None,
+            )
+
+    def test_build_spine_rejects_invalid_logo_alpha(self):
+        import dataclasses
+        from engine.spine_builder import build_spine
+        cover  = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        layout = dataclasses.replace(self._base_layout(), logo_alpha=1.5)
+        with pytest.raises(AssertionError, match="logo_alpha"):
+            build_spine(
+                cover=cover, geom=self._base_geom(), layout=layout,
+                blur_radius=20, darken_alpha=180,
+                game_logo=None, top_logo=None, bottom_logo=None,
+            )
+
+    def test_build_spine_rejects_center_y_out_of_bounds(self):
+        import dataclasses
+        from core.models import LogoSlot
+        from engine.spine_builder import build_spine
+        cover  = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        geom   = self._base_geom()
+        # Place game logo center_y way beyond spine height
+        bad_slot = dataclasses.replace(
+            self._base_layout().game, center_y=geom.spine_h + 500
+        )
+        layout = dataclasses.replace(self._base_layout(), game=bad_slot)
+        with pytest.raises(AssertionError, match="center_y"):
+            build_spine(
+                cover=cover, geom=geom, layout=layout,
+                blur_radius=20, darken_alpha=180,
+                game_logo=None, top_logo=None, bottom_logo=None,
+            )
+
+    def test_build_spine_valid_boundary_passes(self):
+        """Asserts must not fire for correctly configured inputs."""
+        import dataclasses
+        from core.models import LogoSlot
+        from engine.spine_builder import build_spine
+        cover  = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        geom   = self._base_geom()
+        # center_y exactly at spine boundary — must pass
+        edge_slot = dataclasses.replace(self._base_layout().game, center_y=geom.spine_h)
+        layout    = dataclasses.replace(self._base_layout(), game=edge_slot)
+        result = build_spine(
+            cover=cover, geom=geom, layout=layout,
+            blur_radius=0, darken_alpha=0,
+            game_logo=None, top_logo=None, bottom_logo=None,
+        )
+        assert result.mode == "RGBA"
