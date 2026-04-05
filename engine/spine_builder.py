@@ -55,6 +55,31 @@ def build_spine(
     cw, ch = cover.size
 
     # ------------------------------------------------------------------
+    # Contract assertions — fail fast on invalid engine state
+    # ------------------------------------------------------------------
+    assert sw > 0 and sh > 0, \
+        f"spine dimensions must be positive, got {sw}x{sh}"
+    assert cw > 0 and ch > 0, \
+        f"cover dimensions must be positive, got {cw}x{ch}"
+    assert blur_radius >= 0, \
+        f"blur_radius must be >= 0, got {blur_radius}"
+    assert 0 <= darken_alpha <= 255, \
+        f"darken_alpha must be in [0, 255], got {darken_alpha}"
+    assert 0.0 <= layout.logo_alpha <= 1.0, \
+        f"logo_alpha must be in [0.0, 1.0], got {layout.logo_alpha}"
+    for slot_name, slot in (
+        ("top",    layout.top),
+        ("game",   layout.game),
+        ("bottom", layout.bottom),
+    ):
+        assert slot.max_w > 0 and slot.max_h > 0, \
+            f"Logo slot '{slot_name}' dimensions must be positive: " \
+            f"max_w={slot.max_w}, max_h={slot.max_h}"
+        assert 0 <= slot.center_y <= sh, \
+            f"Logo slot '{slot_name}' center_y={slot.center_y} " \
+            f"is outside spine bounds [0, {sh}]"
+
+    # ------------------------------------------------------------------
     # 1. Sample background strip from the cover
     # ------------------------------------------------------------------
     src_w  = max(10, int(cw * geom.spine_source_frac))

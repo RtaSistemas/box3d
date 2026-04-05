@@ -163,7 +163,7 @@ class RenderPipeline:
 
         # --- Pre-load shared assets (once) ---
         log.info("Pre-loading profile template into memory...")
-        template_img = Image.open(self.profile.template_path).convert("RGBA")
+        template_img = _safe_open(self.profile.template_path)
 
         log.info("Pre-loading spine logos into memory...")
         top_logo_img    = self._load_logo("top")
@@ -226,29 +226,59 @@ class RenderPipeline:
         bottom_logo_img: Image.Image | None,
     ) -> CoverResult:
         """
-        Open one cover (with OOM Hardening), resolve its game marquee,
-        and delegate to the compositor.  All disk reads happen here.
+        Process one cover: open, compose, save.
+        All disk I/O is concentrated here — engine/ is I/O-free.
         """
-        from engine.compositor import render_cover
+        from engine.compositor import compose_cover
 
-        # --- Cover: disk read + OOM Hardening ---
-        cover_img = _safe_open(cover_path)
+        stem = cover_path.stem
+        t0   = time.perf_counter()
 
-        # --- Game marquee: per-cover lookup + OOM Hardening ---
-        game_logo_img = self._load_game_logo(cover_path.stem)
+        rel         = cover_path.relative_to(self.covers_dir)
+        output_path = self.output_dir / rel.with_suffix(f".{self.options.output_format}")
 
-        return render_cover(
-            cover_path   = cover_path,
-            cover_img    = cover_img,
-            covers_dir   = self.covers_dir,
-            profile      = self.profile,
-            options      = self.options,
-            output_dir   = self.output_dir,
-            game_logo    = game_logo_img,
-            top_logo     = top_logo_img,
-            bottom_logo  = bottom_logo_img,
-            template_img = template_img,
-        )
+        if self.options.dry_run:
+            log.info("[DRY-RUN] %s", rel)
+            return CoverResult(stem=stem, status="dry", elapsed=0.0)
+
+        if self.options.skip_existing and output_path.exists():
+            log.info("[SKIP]    %s — already exists", rel)
+            return CoverResult(stem=stem, status="skip", elapsed=0.0)
+
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # --- Disk read: cover + game logo (OOM Hardened) ---
+            cover_img     = _safe_open(cover_path)
+            game_logo_img = self._load_game_logo(cover_path.stem)
+
+            # --- Pure composition (zero I/O) ---
+            result_img = compose_cover(
+                cover_img    = cover_img,
+                profile      = self.profile,
+                options      = self.options,
+                game_logo    = game_logo_img,
+                top_logo     = top_logo_img,
+                bottom_logo  = bottom_logo_img,
+                template_img = template_img,
+            )
+
+            # --- Disk write: save final output ---
+            ext = output_path.suffix.lower()
+            if ext == ".webp":
+                result_img.save(str(output_path), "WEBP", quality=92, method=4)
+            else:
+                result_img.save(str(output_path), "PNG", optimize=False)
+
+            elapsed = time.perf_counter() - t0
+            log.info("✔  %-46s (%.2fs)", str(rel), elapsed)
+            return CoverResult(stem=stem, status="ok", elapsed=elapsed)
+
+        except Exception as exc:
+            elapsed = time.perf_counter() - t0
+            msg = str(exc).strip()
+            log.error("✘  %s: %s", rel, msg, exc_info=True)
+            return CoverResult(stem=stem, status="error", elapsed=elapsed, error=msg)
 
     def _validate(self) -> bool:
         ok = True

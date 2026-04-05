@@ -26,6 +26,8 @@ env/
 
 # Test artefacts
 tests/visual_output/
+tests/visual/output/
+tests/visual/diff/
 
 # IDE / OS
 .idea/

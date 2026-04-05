@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import dataclasses
 import json
 import mimetypes
 import sys
@@ -38,8 +37,7 @@ from PIL import Image
 
 from core.models       import RenderOptions
 from core.registry     import ProfileRegistry
-from engine.compositor import _composite
-from engine.spine_builder import build_spine
+from engine.compositor import compose_cover
 
 
 # ---------------------------------------------------------------------------
@@ -223,51 +221,32 @@ class VariantResult:
 def _render(v: Variant, output_dir: Path, registry: ProfileRegistry) -> VariantResult:
     t0 = time.perf_counter()
     try:
-        profile = registry.get(v.profile_name)
-        geom    = profile.geometry
-        layout  = profile.layout
+        profile  = registry.get(v.profile_name)
+        out_path = output_dir / f"{v.id}.{v.fmt}"
 
-        if v.spine_source is not None:
-            geom = dataclasses.replace(geom, spine_source=v.spine_source)
-        if v.cover_fit is not None:
-            geom = dataclasses.replace(geom, cover_fit=v.cover_fit)
-        if v.no_rotate:
-            layout = dataclasses.replace(
-                layout,
-                game   = dataclasses.replace(layout.game,   rotate=0),
-                top    = dataclasses.replace(layout.top,     rotate=0),
-                bottom = dataclasses.replace(layout.bottom,  rotate=0),
-            )
-
-        cover_path    = ASSETS / "cover.webp"
-        out_path      = output_dir / f"{v.id}.{v.fmt}"
-
-        cover = Image.open(cover_path).convert("RGBA")
-
+        cover       = Image.open(ASSETS / "cover.webp").convert("RGBA")
         top_logo    = Image.open(ASSETS / "logo_top.png").convert("RGBA")    if v.with_logos else None
         bottom_logo = Image.open(ASSETS / "logo_bottom.png").convert("RGBA") if v.with_logos else None
         game_logo   = Image.open(ASSETS / "marquee.webp").convert("RGBA")    if v.with_logos else None
+        template    = Image.open(profile.template_path).convert("RGBA")
 
-        strip = build_spine(
-            cover        = cover,
-            geom         = geom,
-            layout       = layout,
+        opts = RenderOptions(
             blur_radius  = v.blur_radius,
             darken_alpha = v.darken_alpha,
+            rgb_matrix   = v.rgb_matrix,
+            no_rotate    = v.no_rotate,
+            cover_fit    = v.cover_fit,
+            spine_source = v.spine_source,
+        )
+
+        result = compose_cover(
+            cover_img    = cover,
+            profile      = profile,
+            options      = opts,
             game_logo    = game_logo,
             top_logo     = top_logo,
             bottom_logo  = bottom_logo,
-        )
-
-        # OOM/Disk I/O Hardening: Passes Image.Image objects directly to _composite
-        template_img = Image.open(profile.template_path).convert("RGBA")
-        result = _composite(
-            template_path = profile.template_path,
-            cover_img     = cover,
-            spine_img     = strip,
-            geom          = geom,
-            rgb_matrix    = v.rgb_matrix,
-            template_img  = template_img,
+            template_img = template,
         )
 
         if v.fmt == "webp":
