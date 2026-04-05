@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import webbrowser
 from pathlib import Path
@@ -29,6 +30,19 @@ log = logging.getLogger("box3d.cli")
 # ---------------------------------------------------------------------------
 # CLI Parsers
 # ---------------------------------------------------------------------------
+
+def _workers_type(value: str) -> int:
+    """argparse type for --workers: accepts a positive integer or 'auto'."""
+    if value == "auto":
+        return os.cpu_count() or 1
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid workers value: '{value}'")
+    if n < 1:
+        raise argparse.ArgumentTypeError("--workers must be >= 1")
+    return n
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -89,8 +103,8 @@ Examples:
                           default="webp", help="Output format")
     render_p.add_argument("--skip-existing", "-s", action="store_true",
                           help="Skip already rendered covers")
-    render_p.add_argument("--workers", "-w", type=int, default=4,
-                          help="Number of parallel workers")
+    render_p.add_argument("--workers", "-w", type=_workers_type, default=4,
+                          help="Number of parallel workers, or 'auto' to use os.cpu_count()")
     render_p.add_argument("--dry-run", action="store_true",
                           help="Simulate pipeline without rendering")
 
