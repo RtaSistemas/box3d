@@ -475,3 +475,353 @@ class TestPipeline:
         ).run()
         # profiles/mvs/assets/ has no logo_game.* — runs fine with None
         assert stats["ok"] == 1
+
+
+# ===========================================================================
+# TASK-ENGINE-IO-PURGE-01 — engine/compositor.py
+# ===========================================================================
+
+class TestCompositor:
+    """Validate all changes introduced by TASK-ENGINE-IO-PURGE-01."""
+
+    # ------------------------------------------------------------------
+    # Public API: compose_cover()
+    # ------------------------------------------------------------------
+
+    def test_compose_cover_importable(self):
+        from engine.compositor import compose_cover
+        assert callable(compose_cover)
+
+    def test_render_cover_removed(self):
+        """render_cover() must not exist in engine.compositor (HIGH-1)."""
+        import engine.compositor as ec
+        assert not hasattr(ec, "render_cover"), (
+            "render_cover must be removed from engine.compositor — HIGH-1"
+        )
+
+    def test_compose_cover_returns_rgba_image(self):
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+        result   = compose_cover(
+            cover_img=cover, profile=profile, options=RenderOptions(),
+            template_img=template,
+        )
+        assert isinstance(result, Image.Image)
+        assert result.mode == "RGBA"
+
+    def test_compose_cover_output_size_matches_template(self):
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+        result   = compose_cover(
+            cover_img=cover, profile=profile, options=RenderOptions(),
+            template_img=template,
+        )
+        assert result.size == template.size
+
+    def test_compose_cover_with_all_logos(self):
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+        result   = compose_cover(
+            cover_img    = cover,
+            profile      = profile,
+            options      = RenderOptions(),
+            game_logo    = Image.open(ASSETS / "marquee.webp").convert("RGBA"),
+            top_logo     = Image.open(ASSETS / "logo_top.png").convert("RGBA"),
+            bottom_logo  = Image.open(ASSETS / "logo_bottom.png").convert("RGBA"),
+            template_img = template,
+        )
+        assert result.mode == "RGBA"
+        assert result.size == template.size
+
+    def test_compose_cover_game_logo_none_accepted(self):
+        """All logo params are optional — None must not crash."""
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+        result   = compose_cover(
+            cover_img=cover, profile=profile, options=RenderOptions(),
+            game_logo=None, top_logo=None, bottom_logo=None,
+            template_img=template,
+        )
+        assert result.mode == "RGBA"
+
+    def test_compose_cover_none_template_raises(self):
+        """compose_cover with template_img=None must raise AssertionError."""
+        from engine.compositor import compose_cover
+        profile = ProfileRegistry(PROFILES).load().get("mvs")
+        cover   = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        with pytest.raises(AssertionError):
+            compose_cover(
+                cover_img=cover, profile=profile, options=RenderOptions(),
+                template_img=None,
+            )
+
+    @pytest.mark.parametrize("name", ["mvs", "arcade", "dvd"])
+    def test_compose_cover_all_profiles(self, name):
+        """compose_cover must succeed for every built-in profile."""
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get(name)
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+        result   = compose_cover(
+            cover_img=cover, profile=profile, options=RenderOptions(),
+            template_img=template,
+        )
+        assert result.size == (profile.geometry.template_w, profile.geometry.template_h)
+
+    def test_compose_cover_rgb_matrix_changes_output(self):
+        """rgb_matrix override must visibly alter pixel values."""
+        import numpy as np
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+
+        neutral = compose_cover(
+            cover_img=cover, profile=profile,
+            options=RenderOptions(rgb_matrix=None), template_img=template,
+        )
+        warm = compose_cover(
+            cover_img=cover, profile=profile,
+            options=RenderOptions(rgb_matrix="1.4 0 0  0 1.0 0  0 0 0.6"),
+            template_img=template,
+        )
+        assert not (np.array(neutral) == np.array(warm)).all(), (
+            "rgb_matrix had no effect on output pixels"
+        )
+
+    def test_compose_cover_no_rotate_override(self):
+        """no_rotate=True produces valid RGBA output without crash."""
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("arcade")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+        result   = compose_cover(
+            cover_img=cover, profile=profile,
+            options=RenderOptions(no_rotate=True), template_img=template,
+        )
+        assert result.mode == "RGBA"
+
+    # ------------------------------------------------------------------
+    # _composite() signature / contract
+    # ------------------------------------------------------------------
+
+    def test_composite_template_path_param_removed(self):
+        """_composite() must not accept template_path (vestigial arg gone)."""
+        import inspect
+        from engine.compositor import _composite
+        sig = inspect.signature(_composite)
+        assert "template_path" not in sig.parameters, (
+            "_composite() still has template_path — it was supposed to be removed"
+        )
+
+    def test_composite_none_template_raises_assertion(self):
+        """_composite() with template_img=None must raise AssertionError."""
+        from engine.compositor import _composite
+        reg  = ProfileRegistry(PROFILES).load()
+        geom = reg.get("mvs").geometry
+        w, h = geom.spine_w, geom.spine_h
+        with pytest.raises(AssertionError):
+            _composite(
+                cover_img    = Image.new("RGBA", (w, h), (100, 150, 200, 255)),
+                spine_img    = Image.new("RGBA", (w, h), (80,  80,  80,  255)),
+                geom         = geom,
+                rgb_matrix   = None,
+                template_img = None,
+            )
+
+    # ------------------------------------------------------------------
+    # Zero-I/O contract
+    # ------------------------------------------------------------------
+
+    def test_compose_cover_performs_no_disk_read(self):
+        """compose_cover must not call Image.open — engine is zero I/O."""
+        from unittest.mock import patch
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+
+        with patch("PIL.Image.open") as mock_open:
+            compose_cover(
+                cover_img=cover, profile=profile, options=RenderOptions(),
+                template_img=template,
+            )
+            mock_open.assert_not_called()
+
+    def test_compositor_module_has_no_path_import(self):
+        """engine.compositor must not import Path (removed with render_cover)."""
+        import ast, inspect, engine.compositor as ec
+        src  = inspect.getsource(ec)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                if node.module == "pathlib":
+                    names = [a.name for a in node.names]
+                    assert "Path" not in names, (
+                        "from pathlib import Path found in engine.compositor — dead import"
+                    )
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert alias.name != "time", (
+                        "import time found in engine.compositor — dead import"
+                    )
+
+    def test_compositor_module_no_coverresult_import(self):
+        """engine.compositor must not import CoverResult (removed with render_cover)."""
+        import ast, inspect, engine.compositor as ec
+        src  = inspect.getsource(ec)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                src_line = ast.get_source_segment(src, node) or ""
+                assert "CoverResult" not in src_line, (
+                    "CoverResult still imported in engine.compositor — dead import"
+                )
+
+
+# ===========================================================================
+# TASK-ENGINE-IO-PURGE-01 — HIGH-2 template via _safe_open
+# ===========================================================================
+
+class TestPipelineEngineIoPurge:
+
+    def test_template_loaded_via_safe_open(self, tmp_path):
+        """HIGH-2: template must be loaded through _safe_open, not Image.open."""
+        import shutil
+        from unittest.mock import patch
+        from core.pipeline import RenderPipeline
+
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+        profile = ProfileRegistry(PROFILES).load().get("mvs")
+
+        # Record every path passed to _safe_open
+        from core import pipeline as _pipeline_mod
+        original = _pipeline_mod._safe_open
+        recorded: list[Path] = []
+
+        def recording_safe_open(path: Path):
+            recorded.append(path)
+            return original(path)
+
+        with patch.object(_pipeline_mod, "_safe_open", side_effect=recording_safe_open):
+            stats = RenderPipeline(
+                profile=profile, covers_dir=covers,
+                output_dir=tmp_path / "out", temp_dir=tmp_path / "temp",
+                options=RenderOptions(workers=1), logo_paths={},
+                marquees_dir=tmp_path / "m",
+            ).run()
+
+        assert any(p == profile.template_path for p in recorded), (
+            "template was NOT passed to _safe_open — HIGH-2 not fixed"
+        )
+        assert stats["ok"] == 1
+
+    def test_safe_open_oom_guard_downscales(self, tmp_path):
+        """_safe_open must call thumbnail when image exceeds 8192px."""
+        from unittest.mock import patch, MagicMock, PropertyMock
+        from core.pipeline import _safe_open
+
+        # Write a real tiny file so Image.open succeeds at the file level
+        real = Image.new("RGBA", (4, 4), (200, 100, 50, 255))
+        img_path = tmp_path / "big.png"
+        real.save(str(img_path))
+
+        # Make the in-memory image report itself as oversized
+        mock_img = MagicMock(spec=Image.Image)
+        type(mock_img).width  = PropertyMock(return_value=10000)
+        type(mock_img).height = PropertyMock(return_value=100)
+
+        with patch("PIL.Image.open") as mock_open:
+            mock_open.return_value.convert.return_value = mock_img
+            _safe_open(img_path)
+
+        mock_img.thumbnail.assert_called_once_with((8192, 8192), Image.BICUBIC)
+
+    def test_safe_open_no_downscale_when_within_limit(self, tmp_path):
+        """_safe_open must NOT call thumbnail for images within 8192px."""
+        from unittest.mock import patch, MagicMock, PropertyMock
+        from core.pipeline import _safe_open
+
+        real = Image.new("RGBA", (4, 4), (200, 100, 50, 255))
+        img_path = tmp_path / "normal.png"
+        real.save(str(img_path))
+
+        mock_img = MagicMock(spec=Image.Image)
+        type(mock_img).width  = PropertyMock(return_value=800)
+        type(mock_img).height = PropertyMock(return_value=1000)
+
+        with patch("PIL.Image.open") as mock_open:
+            mock_open.return_value.convert.return_value = mock_img
+            _safe_open(img_path)
+
+        mock_img.thumbnail.assert_not_called()
+
+    def test_compositor_module_has_no_image_open_call(self):
+        """engine.compositor must contain no Image.open() call (zero I/O contract)."""
+        import ast, inspect
+        import engine.compositor as ec
+        src  = inspect.getsource(ec)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            # Detect `Image.open(...)` — Attribute node whose value is Name "Image"
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "open"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "Image"
+            ):
+                pytest.fail(
+                    "Image.open() call found in engine.compositor — zero I/O contract violated"
+                )
+
+    def test_skip_existing_returns_skip_status(self, tmp_path):
+        """_process_one with skip_existing=True must skip pre-existing output."""
+        import shutil
+        from core.pipeline import RenderPipeline
+
+        covers = tmp_path / "covers"; covers.mkdir()
+        out    = tmp_path / "out";    out.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+        # Pre-create the output so it already exists
+        (out / "cover.webp").write_bytes(b"already_rendered")
+
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers, output_dir=out, temp_dir=tmp_path / "temp",
+            options=RenderOptions(workers=1, skip_existing=True),
+            logo_paths={}, marquees_dir=tmp_path / "m",
+        ).run()
+
+        assert stats["skip"] == 1
+        assert stats.get("ok", 0) == 0
+        # Pre-existing file must not be overwritten
+        assert (out / "cover.webp").read_bytes() == b"already_rendered"
+
+    def test_process_one_dry_run_no_output_file(self, tmp_path):
+        """_process_one with dry_run=True must not write any file."""
+        import shutil
+        from core.pipeline import RenderPipeline
+
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers, output_dir=tmp_path / "out",
+            temp_dir=tmp_path / "temp",
+            options=RenderOptions(workers=1, dry_run=True),
+            logo_paths={}, marquees_dir=tmp_path / "m",
+        ).run()
+
+        assert stats["dry"] == 1
+        out_dir = tmp_path / "out"
+        assert not out_dir.exists() or not any(out_dir.iterdir())
