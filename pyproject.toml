@@ -30,6 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+web = ["fastapi>=0.111", "uvicorn[standard]>=0.29"]
 
 [project.scripts]
 box3d = "cli.main:main"
@@ -41,7 +42,7 @@ Issues     = "https://github.com/Rtasistemas/box3d/issues"
 
 [tool.setuptools.packages.find]
 where  = ["."]
-include = ["core*", "engine*", "cli*"]
+include = ["core*", "engine*", "cli*", "web*"]
 
 [tool.pytest.ini_options]
 testpaths        = ["tests"]
