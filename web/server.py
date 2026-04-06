@@ -35,6 +35,7 @@ from typing import AsyncGenerator
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from cli.bootstrap import _PROFILES
@@ -252,6 +253,18 @@ async def start_render(
 
     return JSONResponse({"status": "started", "profile": payload.profile,
                          "covers_dir": str(covers_dir)})
+
+
+# ---------------------------------------------------------------------------
+# Static UI
+# Mounted AFTER all /api/* route handlers so FastAPI matches API routes first.
+# StaticFiles with html=True serves index.html for any unmatched path (SPA
+# fallback), so the browser can navigate directly to http://localhost:8000.
+# ---------------------------------------------------------------------------
+
+_UI_DIR = Path(__file__).parent / "ui"
+if _UI_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=_UI_DIR, html=True), name="ui")
 
 
 # ---------------------------------------------------------------------------
