@@ -117,6 +117,14 @@ Examples:
     subparsers.add_parser("designer",
                           help="Open Box3D Designer Pro in the default browser")
 
+    # --- Serve ---
+    serve_p = subparsers.add_parser("serve",
+                                    help="Start the Box3D Web Control Center (requires [web] extra)")
+    serve_p.add_argument("--host", type=str, default="127.0.0.1",
+                         help="Bind address (default: 127.0.0.1)")
+    serve_p.add_argument("--port", type=int, default=8000,
+                         help="TCP port (default: 8000)")
+
     return parser
 
 
@@ -311,6 +319,32 @@ def cmd_profiles_validate(registry: ProfileRegistry) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Start the Box3D Web Control Center via Uvicorn.
+
+    Imports ``uvicorn`` and ``web.server`` at call time (defensive import) so
+    that the CLI works normally on installations without the ``[web]`` extra.
+    If the packages are missing the user receives a clear installation hint
+    rather than a raw ``ImportError``.
+    """
+    try:
+        import uvicorn                  # noqa: PLC0415
+        from web.server import app      # noqa: PLC0415
+    except ImportError:
+        log.error(
+            "Web modules not found. Install with: pip install .[web]"
+        )
+        sys.exit(1)
+
+    log.info("Starting Box3D Control Center on http://%s:%d", args.host, args.port)
+    log.info("Press Ctrl+C to stop.")
+
+    # Pass the app object directly — avoids module-string lookups that fail
+    # inside a PyInstaller --onefile frozen binary.  reload=False is required
+    # for frozen execution (file watching cannot work on extracted temp files).
+    uvicorn.run(app, host=args.host, port=args.port, reload=False)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -344,6 +378,9 @@ def main() -> None:
             sys.exit(cmd_profiles_list(registry))
         elif args.profiles_cmd == "validate":
             sys.exit(cmd_profiles_validate(registry))
+
+    elif args.command == "serve":
+        cmd_serve(args)
 
     elif args.command == "designer":
         designer_path = _BUNDLE / "tools" / "box3d_designer_pro" / "index.html"

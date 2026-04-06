@@ -38,7 +38,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from cli.bootstrap import _PROFILES
+from cli.bootstrap import _BUNDLE, _PROFILES
 from core.models import CoverResult, RenderOptions
 from core.registry import ProfileRegistry, ProfileError
 
@@ -260,11 +260,15 @@ async def start_render(
 # Mounted AFTER all /api/* route handlers so FastAPI matches API routes first.
 # StaticFiles with html=True serves index.html for any unmatched path (SPA
 # fallback), so the browser can navigate directly to http://localhost:8000.
+#
+# _BUNDLE resolves correctly in both environments:
+#   - Development / pip install : project root   → <root>/web/ui/
+#   - PyInstaller --onefile     : sys._MEIPASS   → <MEIPASS>/web/ui/
 # ---------------------------------------------------------------------------
 
-_UI_DIR = Path(__file__).parent / "ui"
+_UI_DIR = _BUNDLE / "web" / "ui"
 if _UI_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=_UI_DIR, html=True), name="ui")
+    app.mount("/", StaticFiles(directory=str(_UI_DIR), html=True), name="ui")
 
 
 # ---------------------------------------------------------------------------

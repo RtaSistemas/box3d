@@ -32,11 +32,11 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install package with dev dependencies
-        run: python -m pip install -e ".[dev]"
+      - name: Install package with dev + web dependencies
+        run: python -m pip install -e ".[dev,web]"
 
       - name: Run test suite
-        run: pytest tests/test_v2.py -v --tb=short
+        run: pytest tests/test_v2.py tests/test_web.py -v --tb=short
 
   # ------------------------------------------------------------------
   # Build: compile standalone executables and publish the GitHub Release.
@@ -79,10 +79,10 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install runtime dependencies and PyInstaller
-        # Install the package (which pulls Pillow + NumPy from pyproject.toml)
-        # plus PyInstaller. Avoids reinstalling Pillow/NumPy a second time.
-        run: python -m pip install pyinstaller .
+      - name: Install runtime dependencies, web extra, and PyInstaller
+        # Install the full package including the optional [web] extra so that
+        # FastAPI + Uvicorn are bundled into the standalone executable.
+        run: python -m pip install pyinstaller ".[web]"
 
       - name: Build standalone executable (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -93,6 +93,19 @@ jobs:
             --name ${{ matrix.build_name }} \
             --add-data "profiles:profiles" \
             --add-data "cli/instructions_template.txt:cli" \
+            --add-data "web/ui:web/ui" \
+            --add-data "tools:tools" \
+            --hidden-import uvicorn.logging \
+            --hidden-import uvicorn.loops \
+            --hidden-import uvicorn.loops.auto \
+            --hidden-import uvicorn.protocols \
+            --hidden-import uvicorn.protocols.http \
+            --hidden-import uvicorn.protocols.http.auto \
+            --hidden-import uvicorn.protocols.websockets \
+            --hidden-import uvicorn.protocols.websockets.auto \
+            --hidden-import uvicorn.lifespan \
+            --hidden-import uvicorn.lifespan.on \
+            --hidden-import fastapi \
             cli/main.py
 
       - name: Build standalone executable (Windows)
@@ -104,6 +117,19 @@ jobs:
             --name ${{ matrix.build_name }} `
             --add-data "profiles;profiles" `
             --add-data "cli/instructions_template.txt;cli" `
+            --add-data "web/ui;web/ui" `
+            --add-data "tools;tools" `
+            --hidden-import uvicorn.logging `
+            --hidden-import uvicorn.loops `
+            --hidden-import uvicorn.loops.auto `
+            --hidden-import uvicorn.protocols `
+            --hidden-import uvicorn.protocols.http `
+            --hidden-import uvicorn.protocols.http.auto `
+            --hidden-import uvicorn.protocols.websockets `
+            --hidden-import uvicorn.protocols.websockets.auto `
+            --hidden-import uvicorn.lifespan `
+            --hidden-import uvicorn.lifespan.on `
+            --hidden-import fastapi `
             cli/main.py
 
       - name: Upload asset to GitHub Release
