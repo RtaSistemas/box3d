@@ -89,6 +89,16 @@ pip install -e .                   # Installs in editable mode with all runtime 
 pip install -e ".[dev]"
 ```
 
+### With web Control Center (optional)
+
+```bash
+pip install -e ".[web]"          # adds FastAPI + Uvicorn
+uvicorn web.server:app --reload  # open http://localhost:8000
+```
+
+> The web extra is **optional** — the CLI and rendering engine work with only
+> Pillow and NumPy.  Install `.[web]` only if you want the browser-based UI.
+
 ### Pre-built binaries
 
 Standalone executables (no Python required) are available on the
@@ -193,6 +203,14 @@ Preview a run without writing any files:
 
 ```bash
 python cli/main.py render --profile mvs --dry-run --verbose
+```
+
+**Prefer a GUI?** Install the web extra and use the browser-based Control Center instead of the CLI:
+
+```bash
+pip install -e ".[web]"
+uvicorn web.server:app --reload
+# Navigate to http://localhost:8000
 ```
 
 ---
@@ -519,6 +537,40 @@ For each cover, the game logo on the spine is resolved in this order:
 3. None — spine is rendered without a game logo.
 
 The `--no-logos` flag disables all logo rendering (game, top, and bottom).
+
+---
+
+## Box3D Control Center (Web UI)
+
+A browser-based graphical interface for running render jobs without using the CLI.
+
+### Install and launch
+
+```bash
+pip install -e ".[web]"
+uvicorn web.server:app --reload
+```
+
+Open **http://localhost:8000** in any modern browser.
+
+### What it provides
+
+| Feature | Details |
+|---|---|
+| Profile selector | Dropdown auto-populated from your `profiles/` directory |
+| Path validation | Real-time directory check as you type — green/red border feedback |
+| Full options | All render parameters (workers, blur, darken, cover-fit, format, flags) |
+| Live progress | Server-Sent Events stream updates a progress bar and log in real time |
+| Render summary | Modal shows succeeded / skipped / errors / timing after completion |
+
+### Architecture
+
+The web server is a **thin FastAPI layer** that calls the same `RenderPipeline`
+used by the CLI.  The rendering engine (`core/`, `engine/`) is completely
+unchanged.  The pipeline runs in a background thread so the UI stays responsive
+during long batches.
+
+> **Read the full user manual:** [`docs/web_manual.md`](docs/web_manual.md)
 
 ---
 

@@ -129,7 +129,7 @@ def validate_path(payload: PathCheckRequest) -> JSONResponse:
     while the user is typing.
     """
     try:
-        valid = Path(payload.path).is_dir()
+        valid = bool(payload.path) and Path(payload.path).is_dir()
     except (OSError, ValueError):
         valid = False
     return JSONResponse({"valid": valid, "path": payload.path})
