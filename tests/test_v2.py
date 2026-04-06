@@ -362,8 +362,8 @@ class TestPipeline:
             marquees_dir = tmp_path / "nonexistent",
         ).run()
 
-        assert stats["ok"]    == 1
-        assert stats["error"] == 0
+        assert stats.succeeded    == 1
+        assert stats.failed == 0
         out = tmp_path / "output" / "cover.webp"
         assert out.exists() and out.stat().st_size > 0
 
@@ -399,7 +399,7 @@ class TestPipeline:
             output_dir=tmp_path/"output", temp_dir=tmp_path/"temp",
             options=opts, logo_paths={}, marquees_dir=tmp_path/"m",
         ).run()
-        assert stats["dry"] == 1
+        assert stats.dry == 1
         out_dir = tmp_path / "output"
         assert not out_dir.exists() or not any(out_dir.iterdir())
 
@@ -416,7 +416,7 @@ class TestPipeline:
             output_dir=tmp_path/"out", temp_dir=tmp_path/"temp",
             options=opts, logo_paths={}, marquees_dir=tmp_path/"m",
         ).run()
-        assert stats["ok"] == 1
+        assert stats.succeeded == 1
     def test_game_logo_fallback_uses_profile_asset(self, tmp_path):
         """When marquees_dir has no match, logo_game.* in profile assets/ is used."""
         import shutil, dataclasses
@@ -439,7 +439,7 @@ class TestPipeline:
             options=RenderOptions(workers=1), logo_paths={},
             marquees_dir=tmp_path / "empty_marquees",
         ).run()
-        assert stats["ok"] == 1 and stats["error"] == 0
+        assert stats.succeeded == 1 and stats.failed == 0
 
     def test_game_logo_dynamic_preferred_over_fallback(self, tmp_path):
         """Dynamic marquee in marquees_dir takes priority over logo_game in assets/."""
@@ -457,7 +457,7 @@ class TestPipeline:
             options=RenderOptions(workers=1), logo_paths={},
             marquees_dir=marquees,
         ).run()
-        assert stats["ok"] == 1
+        assert stats.succeeded == 1
 
     def test_game_logo_none_when_both_missing(self, tmp_path):
         """Neither marquee nor logo_game → render succeeds with game_logo=None."""
@@ -474,7 +474,7 @@ class TestPipeline:
             marquees_dir=tmp_path / "no_marquees",
         ).run()
         # profiles/mvs/assets/ has no logo_game.* — runs fine with None
-        assert stats["ok"] == 1
+        assert stats.succeeded == 1
 
 
 # ===========================================================================
@@ -723,7 +723,7 @@ class TestPipelineEngineIoPurge:
         assert any(p == profile.template_path for p in recorded), (
             "template was NOT passed to _safe_open — HIGH-2 not fixed"
         )
-        assert stats["ok"] == 1
+        assert stats.succeeded == 1
 
     def test_safe_open_oom_guard_downscales(self, tmp_path):
         """_safe_open must call thumbnail when image exceeds 8192px."""
@@ -801,8 +801,8 @@ class TestPipelineEngineIoPurge:
             logo_paths={}, marquees_dir=tmp_path / "m",
         ).run()
 
-        assert stats["skip"] == 1
-        assert stats.get("ok", 0) == 0
+        assert stats.skipped == 1
+        assert stats.succeeded == 0
         # Pre-existing file must not be overwritten
         assert (out / "cover.webp").read_bytes() == b"already_rendered"
 
@@ -822,7 +822,7 @@ class TestPipelineEngineIoPurge:
             logo_paths={}, marquees_dir=tmp_path / "m",
         ).run()
 
-        assert stats["dry"] == 1
+        assert stats.dry == 1
         out_dir = tmp_path / "out"
         assert not out_dir.exists() or not any(out_dir.iterdir())
 

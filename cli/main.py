@@ -21,7 +21,7 @@ from cli.bootstrap import (
     _bootstrap_data_dir, _bootstrap_instructions,
 )
 from cli.utils import parse_rgb_str
-from core.models   import RenderOptions
+from core.models   import CoverResult, RenderOptions, RenderSummary
 from core.registry import ProfileRegistry, ProfileError
 
 log = logging.getLogger("box3d.cli")
@@ -161,6 +161,26 @@ def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
     return None
 
 
+def print_summary(report: RenderSummary, output_dir: Path) -> None:
+    """Print the render summary to the terminal, keeping the same format as before."""
+    processed = report.succeeded + report.failed
+    log.info("-" * 62)
+    log.info("SUMMARY")
+    log.info("  Total     : %d", report.total)
+    log.info("  Succeeded : %d", report.succeeded)
+    log.info("  Skipped   : %d", report.skipped)
+    log.info("  Errors    : %d", report.failed)
+    log.info("  Dry-run   : %d", report.dry)
+    if report.breaker_tripped:
+        log.info("  Breaker   : TRIPPED — execution was aborted")
+    log.info("  Time      : %.2fs  (~%.2fs/image processed)",
+             report.elapsed_time, report.elapsed_time / max(processed, 1))
+    log.info("  Output    : %s", output_dir)
+    log.info("-" * 62)
+    if report.failed:
+        log.warning("%d error(s) — check the log for details", report.failed)
+
+
 def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
     try:
         profile = registry.get(args.profile)
@@ -229,8 +249,22 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         logo_paths   = logo_paths,
         marquees_dir = marquees_dir,
     )
-    stats = pipeline.run()
-    return 0 if stats.get("error", 0) == 0 else 1
+
+    _progress_shown = False
+
+    def _on_progress(done: int, total: int, result: CoverResult) -> None:
+        nonlocal _progress_shown
+        _progress_shown = True
+        pct = int(done / total * 100)
+        print(f"\r  Progress: {done}/{total}  [{pct:3d}%]", end="", flush=True)
+
+    report = pipeline.run(on_progress=_on_progress)
+
+    if _progress_shown:
+        print()  # close the \r line
+
+    print_summary(report, output_dir)
+    return 0 if report.failed == 0 else 1
 
 
 def cmd_profiles_list(registry: ProfileRegistry) -> int:

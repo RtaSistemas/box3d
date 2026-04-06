@@ -181,3 +181,34 @@ class CoverResult:
     status:  Literal["ok", "skip", "error", "dry"]
     elapsed: float
     error:   str = ""
+
+
+@dataclass
+class RenderSummary:
+    """
+    Structured result returned by ``RenderPipeline.run()``.
+
+    Replaces the old ``dict[str, int]`` so that callers (CLI, web API,
+    desktop UI) can consume structured data instead of parsing log strings.
+    """
+    total:           int
+    succeeded:       int
+    skipped:         int
+    failed:          int
+    dry:             int
+    elapsed_time:    float
+    errors:          list[str]   # "<stem>: <message>" per failed cover
+    breaker_tripped: bool = False
+
+    def to_dict(self) -> dict:
+        """Serialize to a JSON-compatible dictionary."""
+        return {
+            "total":           self.total,
+            "succeeded":       self.succeeded,
+            "skipped":         self.skipped,
+            "failed":          self.failed,
+            "dry":             self.dry,
+            "elapsed_time":    round(self.elapsed_time, 3),
+            "breaker_tripped": self.breaker_tripped,
+            "errors":          self.errors,
+        }
