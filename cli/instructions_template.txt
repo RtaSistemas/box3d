@@ -124,6 +124,31 @@ OTHER COMMANDS
   box3d profiles validate   Check each profile for missing files / OOM bounds
   box3d designer            Open the visual profile editor in the browser
 
+WEB CONTROL CENTER (OPTIONAL GRAPHICAL INTERFACE)
+--------------------------------------------------
+
+  If you installed Box3D with the [web] extra, a browser-based Control Center
+  is available as an alternative to the CLI.
+
+  Start the server:
+
+    pip install "box3d[web]"            (first time only)
+    uvicorn web.server:app --reload
+
+  Then open http://localhost:8000 in your browser.
+
+  The Control Center lets you:
+    - Select a profile from a dropdown
+    - Set cover, output and marquees directories with real-time validation
+    - Configure all render options (workers, blur, darken, cover-fit, etc.)
+    - Watch a live progress bar and per-cover log while rendering
+    - Review a summary (succeeded / skipped / errors) when the job finishes
+
+  The underlying rendering engine is identical to the CLI — same quality,
+  same profiles, same output. The web UI is purely a control layer.
+
+  Full documentation: docs/web_manual.md
+
 ADDING A NEW PROFILE
 --------------------
 

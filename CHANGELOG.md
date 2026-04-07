@@ -1,41 +1,153 @@
 # Changelog
 
 All notable changes to box3d are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
 ## [Unreleased]
 
-### Added (Sprint 5.1)
+### Added (SPRINT-UX-FINAL)
 
-- **Game logo fallback** — `_load_game_logo()` in `core/pipeline.py` now resolves
-  the per-cover game logo in two stages: (1) `data/inputs/marquees/<stem>.*`, then
-  (2) `profiles/<n>/assets/logo_game.*`. Falls back to `None` silently if both are
-  absent. Three new tests verify priority, fallback, and the no-logo path.
-- **Editable profiles/ next to the executable** — `_bootstrap_profiles()` in
-  `cli/main.py` copies the built-in profiles from the bundle to `<exe-dir>/profiles/`
-  on first run using `shutil.copytree`. On subsequent runs only new built-in profiles
-  are added; existing ones are never overwritten, preserving user edits. The
-  `--profiles-dir` default now points to this user-editable directory.
-- **`instructions.txt` on first run** — `_bootstrap_instructions()` writes a
-  comprehensive plain-text quick-start guide next to the executable the first time
-  the binary is launched. The file is never overwritten. Covers: folder structure,
-  file naming conventions, all render flags with defaults and examples, other
-  commands, and steps to add a new profile.
-- **`_PROFILES` module constant** — exposed alongside `_BUNDLE` and `_DATA` in
-  `cli/main.py` for consistent path resolution across all bootstrap functions.
+- **Default-serve behaviour** — running `box3d` with no subcommand now launches
+  the web server on `127.0.0.1:8000` when the `[web]` extra is installed.
+  Falls back to the help text otherwise.
+- **`POST /api/open-folder`** — opens a directory in the OS native file manager
+  (Finder on macOS, Explorer on Windows, xdg-open on Linux). Used by the
+  `📂` buttons and the "Open Output Folder" button in the summary modal.
+- **`GET /api/preview/{filename}`** — serves a rendered output image from
+  `_last_output_dir` for in-browser preview. Path-sanitised (bare filename only).
+- **`/designer/` static mount** — Box3D Designer Pro is now accessible at
+  `http://127.0.0.1:8000/designer/` alongside the Control Center.
+- **`rgb_matrix` on `RenderRequest`** — Control Center can now send RGB channel
+  multipliers to the pipeline; the colour picker converts hex → `[r, g, b]` floats.
+- **`first_stem` + `output_format` in SSE sentinel** — allows the UI to construct
+  the preview URL after a successful render.
+- **Spine-source `<select>`** in the Control Center — exposes `auto / cover / marquee`
+  without requiring the CLI.
+- **RGB colour picker** — `<input type="color">` with a normalised float readout
+  and a ↺ reset button that returns to neutral (`1.0, 1.0, 1.0`).
+- **`📂` folder buttons** next to each path input — click to open the typed path
+  in the OS file manager via `POST /api/open-folder`.
+- **Output preview image** in the summary modal — displays the first successfully
+  rendered cover via `GET /api/preview/{stem}.{format}`.
+- **"Open Output Folder" button** in the summary modal.
+- **Header nav** in the Control Center — links to Control Center (active state)
+  and to Designer Pro in a new tab.
 
-### Changed (Sprint 5.1)
+### Removed (SPRINT-UX-FINAL)
 
-- **README** — Architecture tree updated with per-file detail for profile `assets/`
-  directories. "Standalone executable" section expanded to show `profiles/` and
-  `instructions.txt` in the layout tree, with notes on editing profiles. "Creating a
-  Profile" scaffold now lists all expected filenames and supported extensions. Profile
-  JSON Schema corrected: `rotate` is documented as a per-slot integer field (degrees)
-  replacing the erroneous `rotate_logos` bool; "Logo resolution order" section added.
+- **`temp_dir` parameter** — `RenderPipeline.__init__` keeps `temp_dir` as a
+  silent legacy keyword for API compatibility but no longer stores or uses it.
+  `run()` no longer calls `self.temp_dir.mkdir()`.
+- **`data/output/temp` bootstrap folder** — removed from `_bootstrap_data_dir()`.
+  Box3D has used zero temp files since Sprint 3 (ADR-003); the directory was
+  scaffolded but never written to.
+- **`--temp` CLI flag** — removed from the `render` subparser.
+
+---
+
+### Added (SPRINT-PERF-BATCH-01)
+
+- **Vectorised homography matrix** — `engine/perspective.py:build_matrix` now
+  constructs the 8×8 system with NumPy array indexing instead of a Python loop.
+- **`lru_cache` for perspective coefficients** — `solve_coefficients()` delegates
+  to a cached inner function `_solve_cached(src_pts: tuple, dst_pts: tuple)`.
+  Identical quad pairs (same-profile batch) are solved once.
+- **`--workers auto`** — CLI accepts `"auto"` as a workers value (resolved via
+  `os.cpu_count()`). `_workers_type()` argparse type handles the conversion.
+
+---
+
+### Added (SPRINT-API-FOUNDATION-01)
+
+- **`RenderSummary` dataclass** in `core/models.py` — structured result object
+  replacing the plain `dict[str, int]`. Fields: `total`, `succeeded`, `skipped`,
+  `failed`, `dry`, `elapsed_time`, `errors`, `breaker_tripped`. `.to_dict()`
+  returns a JSON-serialisable dict.
+- **`on_progress` callback** on `RenderPipeline.run()` — fired after each cover
+  completes; signature `(done: int, total: int, result: CoverResult) -> None`.
+- **`print_summary()`** in `cli/main.py` — formats the `RenderSummary` for
+  terminal display; decoupled from the pipeline.
+
+---
+
+### Added (SPRINT-WEB-BACKEND-01 / SPRINT-WEB-FRONTEND-01 / SPRINT-WEB-DOCS-QA-01 / SPRINT-DISTRIBUTION-FINAL)
+
+- **`web/server.py`** — FastAPI server with CORS, SSE progress streaming, and
+  a static mount for the Control Center UI.
+- **`web/ui/`** — Control Center: vanilla JS SPA (`index.html`, `app.js`,
+  `style.css`). No framework, no build step.
+- **`box3d serve`** CLI command — starts Uvicorn; `--host` and `--port` flags.
+- **`tests/test_web.py`** — 14 `TestClient` tests for the API; uses
+  `pytest.importorskip("fastapi")` so the suite is skipped when `[web]` is absent.
+- **`httpx`** added to the `[web]` optional dependency group (required by
+  Starlette `TestClient`).
+- **PyInstaller packaging** — `release.yml` updated with `--add-data "web/ui:web/ui"`,
+  `--add-data "tools:tools"`, and 10 `--hidden-import` flags for uvicorn/fastapi.
+
+---
+
+### Added (Designer Pro theme system)
+
+- **Dark / Light / Retro themes** in `tools/box3d_designer_pro/index.html` — toggle
+  from the toolbar; preference persisted in `localStorage`. Retro theme adds a CRT
+  flicker animation on the logo. Version bumped to v1.3.0.
 
 ---
 
 ## [2.0.0-rc1] — 2026-03
 
+### Added
+
+- Plugin profile system (`profiles/` directory; zero code changes for new styles)
+- Three built-in profiles: `mvs` (703×1000), `arcade` (665×907), `dvd` (633×907)
+- Per-slot logo rotation (`LogoSlot.rotate` int degrees)
+- Circuit breaker: aborts after 2 consecutive errors or > 20 % error rate
+- `_safe_open()` — centralised OOM-hardened image loader (thumbnail ≤ 8 192 px)
+- PyInstaller standalone executables (`_bundle_dir()` / `_data_dir()` split)
+- `_bootstrap_data_dir()` — idempotent first-run folder creation
+- `_bootstrap_profiles()` — copies built-in profiles to `<exe-dir>/profiles/` on first run
+- `_bootstrap_instructions()` — generates `instructions.txt` on first run
+- `profiles validate` command
+- `designer` command (opens Designer Pro via `webbrowser.open()`)
+- `--log-file ""` shorthand for the default log path
+- Four ADRs in MADR format (boundary enforcement, OOM hardening, zero-disk-churn, alpha semantics)
+- 49-test suite across 6 classes
+- 35-variant visual regression runner
+- CI matrix: Python 3.11 / 3.12 / 3.13 with `cancel-in-progress`
+- Box3D Designer Pro self-contained visual editor
+
+### Changed
+
+- Architecture: monolithic script → strict `cli/` → `core/` → `engine/` tiers
+- `build_spine()` accepts pre-loaded `PIL.Image` objects (no disk I/O in engine)
+- OOM hardening extended to two independent layers (profile load + `_safe_open()`)
+- `alpha_weighted_screen` output alpha corrected to `np.maximum(dst, src)` (union)
+- `run.sh` / `test.sh`: `PYTHONPATH` corrected from non-existent `src/`
+
+### Removed
+
+- Intermediate spine temp files (replaced by in-memory `PIL.Image` transfer, ADR-003)
+- `RenderOptions.with_logos` (logo control via `logo_paths={}`)
+- `sys.path.insert` from `cli/main.py`
+
+### Fixed
+
+- PyInstaller output breakage (default paths now resolve to `<exe-dir>/data/`)
+- `profiles validate` was a no-op
+- `designer` command crashed (`subprocess.call` on non-existent file)
+- `PYTHONPATH` in shell scripts pointed to non-existent `src/`
+- `alpha_weighted_screen` docstring mismatch
+
+---
+
+## [1.x]
+
+Version 1.x was a single-file script without plugin profiles, parallel rendering, or formal tests. No changelog was maintained for that series.
+
+---
+
+[Unreleased]: https://github.com/RtaSistemas/box3d/compare/v2.0.0-rc1...HEAD
+[2.0.0-rc1]:  https://github.com/RtaSistemas/box3d/releases/tag/v2.0.0-rc1

@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
 
 from PIL import Image
 
-from core.models import CoverResult, Profile, RenderOptions
+from core.models import CoverResult, Profile, RenderOptions, RenderSummary
 
 log = logging.getLogger("box3d.pipeline")
 
@@ -70,15 +71,14 @@ class RenderPipeline:
         profile:      Profile,
         covers_dir:   Path,
         output_dir:   Path,
-        temp_dir:     Path,
         options:      RenderOptions,
         logo_paths:   dict[str, Path | None] | None = None,
         marquees_dir: Path | None = None,
+        temp_dir:     Path | None = None,   # legacy param — ignored; kept for API compat
     ) -> None:
         self.profile      = profile
         self.covers_dir   = covers_dir
         self.output_dir   = output_dir
-        self.temp_dir     = temp_dir
         self.options      = options
         self.logo_paths   = logo_paths or {}
         self.marquees_dir = marquees_dir or (profile.root / "assets")
@@ -131,8 +131,29 @@ class RenderPipeline:
     # Main run
     # ------------------------------------------------------------------
 
-    def run(self) -> dict[str, int]:
+    def run(
+        self,
+        on_progress: Callable[[int, int, CoverResult], None] | None = None,
+    ) -> RenderSummary:
+        """
+        Execute the full render batch.
+
+        Parameters
+        ----------
+        on_progress:
+            Optional callback invoked after each cover completes.
+            Signature: ``(done: int, total: int, result: CoverResult) -> None``.
+            Fired inside the ``as_completed`` loop so the caller receives
+            real-time updates (useful for progress bars, WebSocket pushes, …).
+
+        Returns
+        -------
+        RenderSummary
+            Structured result with counters, timing, and per-error details.
+            Call ``.to_dict()`` for JSON serialisation.
+        """
         t_start = time.perf_counter()
+        errors:  list[str] = []
 
         log.info("=" * 62)
         log.info("box3d pipeline — starting")
@@ -148,15 +169,22 @@ class RenderPipeline:
 
         if not self._validate():
             log.error("Validation failed — aborting.")
-            return self._stats
+            return RenderSummary(
+                total=0, succeeded=0, skipped=0, failed=0, dry=0,
+                elapsed_time=time.perf_counter() - t_start,
+                errors=["Validation failed — see log for details"],
+            )
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         covers = self._collect()
         if not covers:
             log.warning("No cover images found in %s", self.covers_dir)
-            return self._stats
+            return RenderSummary(
+                total=0, succeeded=0, skipped=0, failed=0, dry=0,
+                elapsed_time=time.perf_counter() - t_start,
+                errors=[],
+            )
 
         total = len(covers)
         log.info("Processing %d cover(s) with %d thread(s)…", total, self.options.workers)
@@ -190,6 +218,9 @@ class RenderPipeline:
                     self._stats[result.status] = \
                         self._stats.get(result.status, 0) + 1
 
+                if result.status == "error" and result.error:
+                    errors.append(f"{result.stem}: {result.error}")
+
                 # --- Circuit Breaker logic ---
                 if result.status == "error":
                     consecutive_errors += 1
@@ -210,13 +241,19 @@ class RenderPipeline:
                     breaker_tripped = True
                     break
 
-                pct = int(done / total * 100)
-                print(f"\r  Progress: {done}/{total}  [{pct:3d}%]",
-                      end="", flush=True)
+                if on_progress is not None:
+                    on_progress(done, total, result)
 
-        print()
-        self._report(total, time.perf_counter() - t_start, breaker_tripped)
-        return self._stats
+        return RenderSummary(
+            total=total,
+            succeeded=self._stats.get("ok",    0),
+            skipped=self._stats.get("skip",  0),
+            failed=self._stats.get("error", 0),
+            dry=self._stats.get("dry",   0),
+            elapsed_time=time.perf_counter() - t_start,
+            errors=errors,
+            breaker_tripped=breaker_tripped,
+        )
 
     def _process_one(
         self,
@@ -313,23 +350,3 @@ class RenderPipeline:
         log.info("Covers found: %d", len(files))
         return files
 
-    def _report(self, total: int, elapsed: float,
-                breaker_tripped: bool = False) -> None:
-        ok_count  = self._stats.get("ok",    0)
-        err_count = self._stats.get("error", 0)
-        processed = ok_count + err_count
-        log.info("-" * 62)
-        log.info("SUMMARY")
-        log.info("  Total     : %d", total)
-        log.info("  Succeeded : %d", ok_count)
-        log.info("  Skipped   : %d", self._stats.get("skip", 0))
-        log.info("  Errors    : %d", err_count)
-        log.info("  Dry-run   : %d", self._stats.get("dry",  0))
-        if breaker_tripped:
-            log.info("  Breaker   : TRIPPED — execution was aborted")
-        log.info("  Time      : %.2fs  (~%.2fs/image processed)",
-                 elapsed, elapsed / max(processed, 1))
-        log.info("  Output    : %s", self.output_dir)
-        log.info("-" * 62)
-        if err_count:
-            log.warning("%d error(s) — check the log for details", err_count)

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Box3D Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────── -->
+  <header id="header">
+    <span class="logo">BOX<span>3D</span></span>
+    <nav class="header-nav">
+      <a href="/" class="nav-btn nav-active" title="Control Center">Control Center</a>
+      <a href="/designer/" class="nav-btn" title="Designer Pro" target="_blank">Designer Pro ↗</a>
+    </nav>
+    <span class="sep"></span>
+    <span class="version">v2.1.0</span>
+    <span id="server-status" class="badge badge-ok">● API ONLINE</span>
+  </header>
+
+  <!-- ── Main layout ─────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- LEFT — Configuration form -->
+    <aside id="config-panel">
+
+      <!-- Profile -->
+      <div class="card">
+        <div class="card-title">▸ Profile</div>
+        <div class="field">
+          <label for="profile-select">Active Profile</label>
+          <select id="profile-select">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+        <div id="profile-info" class="info-row"></div>
+      </div>
+
+      <!-- Paths -->
+      <div class="card">
+        <div class="card-title">▸ Paths</div>
+        <div class="field">
+          <label for="input-covers">Covers directory</label>
+          <div class="input-with-btn">
+            <input id="input-covers" type="text" placeholder="/path/to/data/inputs/covers"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-folder" data-for="input-covers" title="Open folder">📂</button>
+          </div>
+          <span class="path-hint"></span>
+        </div>
+        <div class="field">
+          <label for="input-output">Output directory</label>
+          <div class="input-with-btn">
+            <input id="input-output" type="text" placeholder="/path/to/data/output/converted"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-folder" data-for="input-output" title="Open folder">📂</button>
+          </div>
+          <span class="path-hint"></span>
+        </div>
+        <div class="field">
+          <label for="input-marquees">Marquees directory <em>(optional)</em></label>
+          <div class="input-with-btn">
+            <input id="input-marquees" type="text" placeholder="/path/to/data/inputs/marquees"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-folder" data-for="input-marquees" title="Open folder">📂</button>
+          </div>
+          <span class="path-hint"></span>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div class="card">
+        <div class="card-title">▸ Options</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="opt-workers">Workers</label>
+            <input id="opt-workers" type="number" value="4" min="1" max="64">
+          </div>
+          <div class="field">
+            <label for="opt-blur">Blur radius</label>
+            <input id="opt-blur" type="number" value="20" min="0" max="100">
+          </div>
+          <div class="field">
+            <label for="opt-darken">Darken alpha</label>
+            <input id="opt-darken" type="number" value="180" min="0" max="255">
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="opt-cover-fit">Cover fit</label>
+            <select id="opt-cover-fit">
+              <option value="">profile default</option>
+              <option value="stretch">stretch</option>
+              <option value="fit">fit</option>
+              <option value="crop">crop</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="opt-spine-source">Spine source</label>
+            <select id="opt-spine-source">
+              <option value="">auto</option>
+              <option value="cover">cover</option>
+              <option value="marquee">marquee</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="opt-format">Output format</label>
+            <select id="opt-format">
+              <option value="webp">webp</option>
+              <option value="png">png</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- RGB tint -->
+        <div class="field-row rgb-row">
+          <div class="field field-color">
+            <label for="opt-rgb-picker">Spine RGB tint</label>
+            <div class="color-input-group">
+              <input id="opt-rgb-picker" type="color" value="#ffffff" title="Spine tint colour">
+              <span id="rgb-label" class="rgb-label">1.00, 1.00, 1.00</span>
+              <button id="btn-reset-rgb" class="btn-ghost" title="Reset to neutral">↺</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <label class="checkbox-label">
+            <input id="opt-skip" type="checkbox">
+            <span>Skip existing</span>
+          </label>
+          <label class="checkbox-label">
+            <input id="opt-dry" type="checkbox">
+            <span>Dry run</span>
+          </label>
+          <label class="checkbox-label">
+            <input id="opt-no-logos" type="checkbox">
+            <span>No logos</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Action -->
+      <button id="btn-render" class="btn-primary" disabled>
+        <span id="btn-label">▶ START RENDER</span>
+      </button>
+
+    </aside>
+
+    <!-- RIGHT — Progress & log -->
+    <section id="progress-panel">
+
+      <div class="card" id="card-idle">
+        <div class="idle-msg">
+          Configure a profile and set the directories,<br>
+          then press <strong>Start Render</strong>.
+        </div>
+      </div>
+
+      <div class="card hidden" id="card-progress">
+        <div class="card-title">▸ Progress</div>
+
+        <div id="progress-meta" class="progress-meta">
+          <span id="prog-done">0</span> / <span id="prog-total">—</span>
+          &nbsp;·&nbsp;
+          <span id="prog-pct">0%</span>
+        </div>
+
+        <div class="progress-track">
+          <div id="progress-bar" class="progress-fill" style="width:0%"></div>
+        </div>
+
+        <div id="log-container">
+          <pre id="log-output"></pre>
+        </div>
+      </div>
+
+    </section>
+
+  </div><!-- /main -->
+
+</div><!-- /app -->
+
+<!-- ── Summary modal ──────────────────────────────────────────────── -->
+<div id="summary-overlay" class="hidden">
+  <div id="summary-modal">
+    <div class="modal-title" id="modal-title">Render Complete</div>
+    <div id="summary-preview" class="hidden">
+      <img id="preview-img" src="" alt="Output preview" loading="lazy">
+    </div>
+    <div id="summary-stats" class="summary-grid"></div>
+    <div id="summary-errors" class="error-list hidden"></div>
+    <div class="modal-actions">
+      <button id="btn-open-output" class="btn-secondary">📂 Open Output Folder</button>
+      <button id="btn-close-modal" class="btn-secondary">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

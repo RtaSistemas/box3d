@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import webbrowser
 from pathlib import Path
@@ -20,7 +21,7 @@ from cli.bootstrap import (
     _bootstrap_data_dir, _bootstrap_instructions,
 )
 from cli.utils import parse_rgb_str
-from core.models   import RenderOptions
+from core.models   import CoverResult, RenderOptions, RenderSummary
 from core.registry import ProfileRegistry, ProfileError
 
 log = logging.getLogger("box3d.cli")
@@ -29,6 +30,19 @@ log = logging.getLogger("box3d.cli")
 # ---------------------------------------------------------------------------
 # CLI Parsers
 # ---------------------------------------------------------------------------
+
+def _workers_type(value: str) -> int:
+    """argparse type for --workers: accepts a positive integer or 'auto'."""
+    if value == "auto":
+        return os.cpu_count() or 1
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid workers value: '{value}'")
+    if n < 1:
+        raise argparse.ArgumentTypeError("--workers must be >= 1")
+    return n
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -64,7 +78,6 @@ Examples:
                           help="Input directory containing covers (default: <data>/inputs/covers)")
     render_p.add_argument("--output", "-o", type=str,
                           help="Output directory (default: <data>/output/converted)")
-    render_p.add_argument("--temp", type=str, help="(Legacy) Temp directory path")
     render_p.add_argument("--blur-radius", "-b", type=int, default=20,
                           help="Spine background blur radius (>= 0)")
     render_p.add_argument("--darken", "-d", type=int, default=180,
@@ -89,8 +102,8 @@ Examples:
                           default="webp", help="Output format")
     render_p.add_argument("--skip-existing", "-s", action="store_true",
                           help="Skip already rendered covers")
-    render_p.add_argument("--workers", "-w", type=int, default=4,
-                          help="Number of parallel workers")
+    render_p.add_argument("--workers", "-w", type=_workers_type, default=4,
+                          help="Number of parallel workers, or 'auto' to use os.cpu_count()")
     render_p.add_argument("--dry-run", action="store_true",
                           help="Simulate pipeline without rendering")
 
@@ -102,6 +115,14 @@ Examples:
     # --- Designer ---
     subparsers.add_parser("designer",
                           help="Open Box3D Designer Pro in the default browser")
+
+    # --- Serve ---
+    serve_p = subparsers.add_parser("serve",
+                                    help="Start the Box3D Web Control Center (requires [web] extra)")
+    serve_p.add_argument("--host", type=str, default="127.0.0.1",
+                         help="Bind address (default: 127.0.0.1)")
+    serve_p.add_argument("--port", type=int, default=8000,
+                         help="TCP port (default: 8000)")
 
     return parser
 
@@ -147,6 +168,26 @@ def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
     return None
 
 
+def print_summary(report: RenderSummary, output_dir: Path) -> None:
+    """Print the render summary to the terminal, keeping the same format as before."""
+    processed = report.succeeded + report.failed
+    log.info("-" * 62)
+    log.info("SUMMARY")
+    log.info("  Total     : %d", report.total)
+    log.info("  Succeeded : %d", report.succeeded)
+    log.info("  Skipped   : %d", report.skipped)
+    log.info("  Errors    : %d", report.failed)
+    log.info("  Dry-run   : %d", report.dry)
+    if report.breaker_tripped:
+        log.info("  Breaker   : TRIPPED — execution was aborted")
+    log.info("  Time      : %.2fs  (~%.2fs/image processed)",
+             report.elapsed_time, report.elapsed_time / max(processed, 1))
+    log.info("  Output    : %s", output_dir)
+    log.info("-" * 62)
+    if report.failed:
+        log.warning("%d error(s) — check the log for details", report.failed)
+
+
 def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
     try:
         profile = registry.get(args.profile)
@@ -156,7 +197,6 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
 
     covers_dir = Path(args.input)  if args.input  else _DATA / "inputs"  / "covers"
     output_dir = Path(args.output) if args.output else _DATA / "output"  / "converted"
-    temp_dir   = Path(args.temp)   if args.temp   else _DATA / "output"  / "temp"
 
     if not covers_dir.exists():
         log.error("Input directory not found: %s", covers_dir)
@@ -210,13 +250,26 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         profile      = profile,
         covers_dir   = covers_dir,
         output_dir   = output_dir,
-        temp_dir     = temp_dir,
         options      = options,
         logo_paths   = logo_paths,
         marquees_dir = marquees_dir,
     )
-    stats = pipeline.run()
-    return 0 if stats.get("error", 0) == 0 else 1
+
+    _progress_shown = False
+
+    def _on_progress(done: int, total: int, result: CoverResult) -> None:
+        nonlocal _progress_shown
+        _progress_shown = True
+        pct = int(done / total * 100)
+        print(f"\r  Progress: {done}/{total}  [{pct:3d}%]", end="", flush=True)
+
+    report = pipeline.run(on_progress=_on_progress)
+
+    if _progress_shown:
+        print()  # close the \r line
+
+    print_summary(report, output_dir)
+    return 0 if report.failed == 0 else 1
 
 
 def cmd_profiles_list(registry: ProfileRegistry) -> int:
@@ -263,6 +316,32 @@ def cmd_profiles_validate(registry: ProfileRegistry) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Start the Box3D Web Control Center via Uvicorn.
+
+    Imports ``uvicorn`` and ``web.server`` at call time (defensive import) so
+    that the CLI works normally on installations without the ``[web]`` extra.
+    If the packages are missing the user receives a clear installation hint
+    rather than a raw ``ImportError``.
+    """
+    try:
+        import uvicorn                  # noqa: PLC0415
+        from web.server import app      # noqa: PLC0415
+    except ImportError:
+        log.error(
+            "Web modules not found. Install with: pip install .[web]"
+        )
+        sys.exit(1)
+
+    log.info("Starting Box3D Control Center on http://%s:%d", args.host, args.port)
+    log.info("Press Ctrl+C to stop.")
+
+    # Pass the app object directly — avoids module-string lookups that fail
+    # inside a PyInstaller --onefile frozen binary.  reload=False is required
+    # for frozen execution (file watching cannot work on extracted temp files).
+    uvicorn.run(app, host=args.host, port=args.port, reload=False)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -275,8 +354,19 @@ def main() -> None:
     args   = parser.parse_args()
 
     if getattr(args, "command", None) is None:
-        parser.print_help()
-        sys.exit(0)
+        # No sub-command: try to launch the web server.
+        # If the web extras are not installed, fall back to the help text.
+        try:
+            import uvicorn  # noqa: F401
+            from web.server import app  # noqa: F401
+        except ImportError:
+            parser.print_help()
+            sys.exit(0)
+        _setup_logging(getattr(args, "verbose", False), getattr(args, "log_file", None))
+        log.info("No command given — launching web server on http://127.0.0.1:8000")
+        import uvicorn
+        uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
+        return
 
     _setup_logging(args.verbose, args.log_file)
 
@@ -296,6 +386,9 @@ def main() -> None:
             sys.exit(cmd_profiles_list(registry))
         elif args.profiles_cmd == "validate":
             sys.exit(cmd_profiles_validate(registry))
+
+    elif args.command == "serve":
+        cmd_serve(args)
 
     elif args.command == "designer":
         designer_path = _BUNDLE / "tools" / "box3d_designer_pro" / "index.html"
