@@ -35,19 +35,64 @@ const progressBar    = $('progress-bar');
 const logOutput      = $('log-output');
 const logContainer   = $('log-container');
 
-const summaryOverlay = $('summary-overlay');
-const summaryModal   = $('summary-modal');
-const modalTitle     = $('modal-title');
-const summaryStats   = $('summary-stats');
-const summaryErrors  = $('summary-errors');
-const btnCloseModal  = $('btn-close-modal');
-const serverStatus   = $('server-status');
+const summaryOverlay  = $('summary-overlay');
+const summaryModal    = $('summary-modal');
+const modalTitle      = $('modal-title');
+const summaryStats    = $('summary-stats');
+const summaryErrors   = $('summary-errors');
+const summaryPreview  = $('summary-preview');
+const previewImg      = $('preview-img');
+const btnCloseModal   = $('btn-close-modal');
+const btnOpenOutput   = $('btn-open-output');
+const serverStatus    = $('server-status');
+
+const rgbPicker       = $('opt-rgb-picker');
+const rgbLabel        = $('rgb-label');
+const btnResetRgb     = $('btn-reset-rgb');
 
 // ─── State ─────────────────────────────────────────────────────────────────
 
 let _rendering   = false;
 let _evtSource   = null;
 let _profilesMap = {};   // name → {template_w, template_h}
+
+// ─── RGB colour picker ──────────────────────────────────────────────────────
+
+/** Convert a CSS hex colour (#rrggbb) to normalised [r, g, b] floats (0–2 range). */
+function _hexToRgbMatrix(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return [r * 2, g * 2, b * 2];   // scale: white (#ffffff) → [2,2,2]; neutral → [1,1,1] (#808080)
+}
+
+/** Return the closest hex colour for a normalised rgb_matrix [r,g,b] (0–2 range). */
+function _rgbMatrixToHex(matrix) {
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v / 2 * 255)));
+  const r = clamp(matrix[0]).toString(16).padStart(2, '0');
+  const g = clamp(matrix[1]).toString(16).padStart(2, '0');
+  const b = clamp(matrix[2]).toString(16).padStart(2, '0');
+  return `#${r}${g}${b}`;
+}
+
+function _updateRgbLabel() {
+  const [r, g, b] = _hexToRgbMatrix(rgbPicker.value);
+  rgbLabel.textContent = `${r.toFixed(2)}, ${g.toFixed(2)}, ${b.toFixed(2)}`;
+}
+
+/** Return null when the picker is at neutral (#808080 ≈ [1,1,1]) to avoid sending noise. */
+function _getRgbMatrix() {
+  const [r, g, b] = _hexToRgbMatrix(rgbPicker.value);
+  const neutral = Math.abs(r - 1) < 0.02 && Math.abs(g - 1) < 0.02 && Math.abs(b - 1) < 0.02;
+  return neutral ? null : [r, g, b];
+}
+
+rgbPicker.addEventListener('input', _updateRgbLabel);
+
+btnResetRgb.addEventListener('click', () => {
+  rgbPicker.value = '#808080';   // neutral: scale factors → [1, 1, 1]
+  _updateRgbLabel();
+});
 
 // ─── Path inputs ────────────────────────────────────────────────────────────
 
@@ -65,15 +110,15 @@ async function validatePathInput(entry) {
   const { el, required } = entry;
   const val = el.value.trim();
 
-  // Remove previous state
+  // Remove previous state — hint lives as the next sibling of the input wrapper
   el.classList.remove('path-valid', 'path-invalid');
-  const hint = el.nextElementSibling;
-  hint.textContent = '';
+  const hint = el.closest('.field').querySelector('.path-hint');
+  if (hint) hint.textContent = '';
 
   if (!val) {
     if (required) {
       el.classList.add('path-invalid');
-      hint.textContent = '✗ required';
+      if (hint) hint.textContent = '✗ required';
     }
     _updateRenderButton();
     return;
@@ -89,14 +134,14 @@ async function validatePathInput(entry) {
 
     if (data.valid) {
       el.classList.add('path-valid');
-      hint.textContent = '✔ directory found';
+      if (hint) hint.textContent = '✔ directory found';
     } else {
       el.classList.add('path-invalid');
-      hint.textContent = '✗ directory not found';
+      if (hint) hint.textContent = '✗ directory not found';
     }
   } catch {
     el.classList.add('path-invalid');
-    hint.textContent = '✗ server unreachable';
+    if (hint) hint.textContent = '✗ server unreachable';
   }
 
   _updateRenderButton();
@@ -110,6 +155,23 @@ function _updateRenderButton() {
     .every(e => e.el.classList.contains('path-valid'));
   btnRender.disabled = !ok;
 }
+
+// ─── Folder buttons ─────────────────────────────────────────────────────────
+
+document.querySelectorAll('.btn-folder').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const inputId = btn.dataset.for;
+    const input   = $(inputId);
+    const path    = input ? input.value.trim() : null;
+    try {
+      await fetch('/api/open-folder', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ path: path || null }),
+      });
+    } catch { /* silently ignore — OS may not support it */ }
+  });
+});
 
 // ─── Profile loading ────────────────────────────────────────────────────────
 
@@ -165,10 +227,12 @@ function _buildPayload() {
     blur_radius:   parseInt($('opt-blur').value,    10) || 20,
     darken_alpha:  parseInt($('opt-darken').value,  10) || 180,
     cover_fit:     $('opt-cover-fit').value || null,
+    spine_source:  $('opt-spine-source').value || null,
     output_format: $('opt-format').value,
     skip_existing: $('opt-skip').checked,
     dry_run:       $('opt-dry').checked,
     no_logos:      $('opt-no-logos').checked,
+    rgb_matrix:    _getRgbMatrix(),
   };
 }
 
@@ -226,7 +290,7 @@ async function startRender() {
       _appendLog(
         `■  Done — ${data.succeeded} ok · ${data.failed} errors · ${data.elapsed_time}s`
       );
-      _showSummary(data);
+      _showSummary(data, payload.output_format);
       return;
     }
 
@@ -310,6 +374,18 @@ function _showSummary(data) {
   modalTitle.textContent = hasFails ? 'Render Finished With Errors' : 'Render Complete';
   modalTitle.className   = hasFails ? 'modal-title failed' : 'modal-title';
 
+  // ── Preview image ───────────────────────────────────────────────
+  const fmt  = data.output_format || 'webp';
+  const stem = data.first_stem;
+  if (stem && data.succeeded > 0) {
+    previewImg.src = `/api/preview/${encodeURIComponent(stem)}.${fmt}`;
+    previewImg.alt = stem;
+    summaryPreview.classList.remove('hidden');
+  } else {
+    summaryPreview.classList.add('hidden');
+    previewImg.src = '';
+  }
+
   summaryStats.innerHTML = `
     ${_stat('Total',       data.total,        'dim')}
     ${_stat('Succeeded',   data.succeeded,    'ok')}
@@ -361,6 +437,16 @@ btnCloseModal.addEventListener('click', () => {
   summaryOverlay.classList.add('hidden');
 });
 
+btnOpenOutput.addEventListener('click', async () => {
+  try {
+    await fetch('/api/open-folder', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ path: null }),   // null → use last output dir
+    });
+  } catch { /* silently ignore */ }
+});
+
 // Close modal on overlay click
 summaryOverlay.addEventListener('click', (e) => {
   if (e.target === summaryOverlay) summaryOverlay.classList.add('hidden');
@@ -368,4 +454,5 @@ summaryOverlay.addEventListener('click', (e) => {
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
 
+_updateRgbLabel();   // initialise label from picker default (#808080 → neutral)
 fetchProfiles();

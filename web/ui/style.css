@@ -442,6 +442,136 @@ html, body {
   line-height: 1.6;
 }
 
+/* ── Header nav ──────────────────────────────────────────────────── */
+
+.header-nav {
+  display: flex;
+  gap: .35rem;
+}
+
+.nav-btn {
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  text-decoration: none;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: .22rem .65rem;
+  transition: color var(--transition), border-color var(--transition),
+              background var(--transition);
+  letter-spacing: .06em;
+}
+
+.nav-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(0,234,255,.06);
+}
+
+.nav-btn.nav-active {
+  color: var(--accent);
+  border-color: rgba(0,234,255,.35);
+  background: rgba(0,234,255,.08);
+}
+
+/* ── Path input with folder button ──────────────────────────────── */
+
+.input-with-btn {
+  display: flex;
+  gap: .3rem;
+}
+
+.input-with-btn input {
+  flex: 1;
+}
+
+.btn-folder {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: .85rem;
+  padding: .25rem .45rem;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+
+.btn-folder:hover { border-color: var(--accent); color: var(--text); }
+
+/* Fix path-hint selector when input is inside .input-with-btn */
+.input-with-btn input.path-valid   { border-color: var(--ok); }
+.input-with-btn input.path-invalid { border-color: var(--error); }
+
+/* ── RGB colour picker row ────────────────────────────────────────── */
+
+.rgb-row { margin-top: .25rem; }
+
+.color-input-group {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+#opt-rgb-picker {
+  width: 36px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#opt-rgb-picker:focus { border-color: var(--accent); }
+
+.rgb-label {
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  color: var(--text-dim);
+  flex: 1;
+}
+
+.btn-ghost {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  padding: .2rem .45rem;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Summary preview image ────────────────────────────────────────── */
+
+#summary-preview {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+#preview-img {
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  object-fit: contain;
+  background: var(--bg);
+}
+
+/* ── Modal action row ─────────────────────────────────────────────── */
+
+.modal-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+  margin-top: .5rem;
+}
+
 /* ── Utilities ───────────────────────────────────────────────────── */
 
 .hidden { display: none !important; }

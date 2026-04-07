@@ -15,9 +15,13 @@
 
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <header id="header">
-    <span class="logo">BOX<span>3D</span> CONTROL CENTER</span>
-    <span class="version">v2.1.0</span>
+    <span class="logo">BOX<span>3D</span></span>
+    <nav class="header-nav">
+      <a href="/" class="nav-btn nav-active" title="Control Center">Control Center</a>
+      <a href="/designer/" class="nav-btn" title="Designer Pro" target="_blank">Designer Pro ↗</a>
+    </nav>
     <span class="sep"></span>
+    <span class="version">v2.1.0</span>
     <span id="server-status" class="badge badge-ok">● API ONLINE</span>
   </header>
 
@@ -44,20 +48,29 @@
         <div class="card-title">▸ Paths</div>
         <div class="field">
           <label for="input-covers">Covers directory</label>
-          <input id="input-covers" type="text" placeholder="/path/to/data/inputs/covers"
-                 autocomplete="off" spellcheck="false">
+          <div class="input-with-btn">
+            <input id="input-covers" type="text" placeholder="/path/to/data/inputs/covers"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-folder" data-for="input-covers" title="Open folder">📂</button>
+          </div>
           <span class="path-hint"></span>
         </div>
         <div class="field">
           <label for="input-output">Output directory</label>
-          <input id="input-output" type="text" placeholder="/path/to/data/output/converted"
-                 autocomplete="off" spellcheck="false">
+          <div class="input-with-btn">
+            <input id="input-output" type="text" placeholder="/path/to/data/output/converted"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-folder" data-for="input-output" title="Open folder">📂</button>
+          </div>
           <span class="path-hint"></span>
         </div>
         <div class="field">
           <label for="input-marquees">Marquees directory <em>(optional)</em></label>
-          <input id="input-marquees" type="text" placeholder="/path/to/data/inputs/marquees"
-                 autocomplete="off" spellcheck="false">
+          <div class="input-with-btn">
+            <input id="input-marquees" type="text" placeholder="/path/to/data/inputs/marquees"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-folder" data-for="input-marquees" title="Open folder">📂</button>
+          </div>
           <span class="path-hint"></span>
         </div>
       </div>
@@ -92,11 +105,31 @@
             </select>
           </div>
           <div class="field">
+            <label for="opt-spine-source">Spine source</label>
+            <select id="opt-spine-source">
+              <option value="">auto</option>
+              <option value="cover">cover</option>
+              <option value="marquee">marquee</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="opt-format">Output format</label>
             <select id="opt-format">
               <option value="webp">webp</option>
               <option value="png">png</option>
             </select>
+          </div>
+        </div>
+
+        <!-- RGB tint -->
+        <div class="field-row rgb-row">
+          <div class="field field-color">
+            <label for="opt-rgb-picker">Spine RGB tint</label>
+            <div class="color-input-group">
+              <input id="opt-rgb-picker" type="color" value="#ffffff" title="Spine tint colour">
+              <span id="rgb-label" class="rgb-label">1.00, 1.00, 1.00</span>
+              <button id="btn-reset-rgb" class="btn-ghost" title="Reset to neutral">↺</button>
+            </div>
           </div>
         </div>
 
@@ -161,9 +194,15 @@
 <div id="summary-overlay" class="hidden">
   <div id="summary-modal">
     <div class="modal-title" id="modal-title">Render Complete</div>
+    <div id="summary-preview" class="hidden">
+      <img id="preview-img" src="" alt="Output preview" loading="lazy">
+    </div>
     <div id="summary-stats" class="summary-grid"></div>
     <div id="summary-errors" class="error-list hidden"></div>
-    <button id="btn-close-modal" class="btn-secondary">Close</button>
+    <div class="modal-actions">
+      <button id="btn-open-output" class="btn-secondary">📂 Open Output Folder</button>
+      <button id="btn-close-modal" class="btn-secondary">Close</button>
+    </div>
   </div>
 </div>
 

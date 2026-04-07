@@ -75,14 +75,12 @@ def _bootstrap_data_dir() -> None:
             marquees/    <- optional per-cover game marquees
           output/
             converted/   <- rendered 3-D box art written here
-            temp/        <- pipeline temp files (auto-cleaned)
             logs/        <- log files when --log-file="" is used
     """
     for sub in (
         "inputs/covers",
         "inputs/marquees",
         "output/converted",
-        "output/temp",
         "output/logs",
     ):
         (_DATA / sub).mkdir(parents=True, exist_ok=True)

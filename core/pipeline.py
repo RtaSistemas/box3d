@@ -71,15 +71,14 @@ class RenderPipeline:
         profile:      Profile,
         covers_dir:   Path,
         output_dir:   Path,
-        temp_dir:     Path,
         options:      RenderOptions,
         logo_paths:   dict[str, Path | None] | None = None,
         marquees_dir: Path | None = None,
+        temp_dir:     Path | None = None,   # legacy param — ignored; kept for API compat
     ) -> None:
         self.profile      = profile
         self.covers_dir   = covers_dir
         self.output_dir   = output_dir
-        self.temp_dir     = temp_dir
         self.options      = options
         self.logo_paths   = logo_paths or {}
         self.marquees_dir = marquees_dir or (profile.root / "assets")
@@ -177,7 +176,6 @@ class RenderPipeline:
             )
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         covers = self._collect()
         if not covers:

@@ -78,7 +78,6 @@ Examples:
                           help="Input directory containing covers (default: <data>/inputs/covers)")
     render_p.add_argument("--output", "-o", type=str,
                           help="Output directory (default: <data>/output/converted)")
-    render_p.add_argument("--temp", type=str, help="(Legacy) Temp directory path")
     render_p.add_argument("--blur-radius", "-b", type=int, default=20,
                           help="Spine background blur radius (>= 0)")
     render_p.add_argument("--darken", "-d", type=int, default=180,
@@ -198,7 +197,6 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
 
     covers_dir = Path(args.input)  if args.input  else _DATA / "inputs"  / "covers"
     output_dir = Path(args.output) if args.output else _DATA / "output"  / "converted"
-    temp_dir   = Path(args.temp)   if args.temp   else _DATA / "output"  / "temp"
 
     if not covers_dir.exists():
         log.error("Input directory not found: %s", covers_dir)
@@ -252,7 +250,6 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         profile      = profile,
         covers_dir   = covers_dir,
         output_dir   = output_dir,
-        temp_dir     = temp_dir,
         options      = options,
         logo_paths   = logo_paths,
         marquees_dir = marquees_dir,
@@ -357,8 +354,19 @@ def main() -> None:
     args   = parser.parse_args()
 
     if getattr(args, "command", None) is None:
-        parser.print_help()
-        sys.exit(0)
+        # No sub-command: try to launch the web server.
+        # If the web extras are not installed, fall back to the help text.
+        try:
+            import uvicorn  # noqa: F401
+            from web.server import app  # noqa: F401
+        except ImportError:
+            parser.print_help()
+            sys.exit(0)
+        _setup_logging(getattr(args, "verbose", False), getattr(args, "log_file", None))
+        log.info("No command given — launching web server on http://127.0.0.1:8000")
+        import uvicorn
+        uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
+        return
 
     _setup_logging(args.verbose, args.log_file)
 

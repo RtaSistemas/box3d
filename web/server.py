@@ -27,14 +27,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import platform
 import queue
+import subprocess
 import time
 from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -58,12 +61,13 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Global progress queue
+# Global state
 # A single queue is sufficient for the single-operator desktop use-case this
 # server targets.  Replace with a keyed dict[session_id, Queue] if multiple
 # concurrent render sessions are ever needed.
 # ---------------------------------------------------------------------------
 _progress_queue: queue.Queue[dict] = queue.Queue()
+_last_output_dir: Path | None = None   # set by _run_pipeline; read by /api/open-folder
 
 
 # ---------------------------------------------------------------------------
@@ -79,11 +83,18 @@ class RenderRequest(BaseModel):
     blur_radius:  int  = Field(20,   ge=0, description="Spine background blur radius")
     darken_alpha: int  = Field(180,  ge=0, le=255, description="Spine dark overlay alpha")
     cover_fit:    str | None = Field(None, description="stretch | fit | crop")
-    spine_source: str | None = Field(None, description="left | center | right")
+    spine_source: str | None = Field(None, description="auto | cover | marquee")
     output_format: str = Field("webp", description="webp | png")
     skip_existing: bool = Field(False)
     dry_run:       bool = Field(False)
     no_logos:      bool = Field(False)
+    rgb_matrix:   list[float] | None = Field(
+        None, description="[r, g, b] channel scale factors (0.0–2.0)", min_length=3, max_length=3
+    )
+
+
+class OpenFolderRequest(BaseModel):
+    path: str | None = Field(None, description="Directory to open (default: last output dir)")
 
 
 class PathCheckRequest(BaseModel):
@@ -193,10 +204,16 @@ async def start_render(
             status_code=400,
         )
 
+    # --- RGB matrix ---
+    rgb_matrix: tuple[float, float, float] | None = None
+    if payload.rgb_matrix and len(payload.rgb_matrix) == 3:
+        rgb_matrix = (payload.rgb_matrix[0], payload.rgb_matrix[1], payload.rgb_matrix[2])
+
     # --- Options ---
     options = RenderOptions(
         blur_radius   = payload.blur_radius,
         darken_alpha  = payload.darken_alpha,
+        rgb_matrix    = rgb_matrix,
         cover_fit     = payload.cover_fit,       # type: ignore[arg-type]
         spine_source  = payload.spine_source,    # type: ignore[arg-type]
         output_format = payload.output_format,   # type: ignore[arg-type]
@@ -212,19 +229,26 @@ async def start_render(
 
     def _run_pipeline() -> None:
         """Executed in a worker thread via asyncio.to_thread()."""
+        global _last_output_dir
+        _last_output_dir = output_dir
+
         from core.pipeline import RenderPipeline
 
         pipeline = RenderPipeline(
             profile      = profile,
             covers_dir   = covers_dir,
             output_dir   = output_dir,
-            temp_dir     = output_dir / ".tmp",
             options      = options,
             logo_paths   = {"top": None, "bottom": None},
             marquees_dir = marquees_dir or (profile.root / "assets"),
         )
 
+        first_stem: str | None = None
+
         def on_progress(done: int, total: int, result: CoverResult) -> None:
+            nonlocal first_stem
+            if result.status == "ok" and first_stem is None:
+                first_stem = result.stem
             _progress_queue.put({
                 "done":    done,
                 "total":   total,
@@ -246,6 +270,8 @@ async def start_render(
             "elapsed_time":    round(report.elapsed_time, 2),
             "breaker_tripped": report.breaker_tripped,
             "errors":          report.errors,
+            "first_stem":      first_stem,
+            "output_format":   payload.output_format,
         })
 
     # Dispatch to a thread so the async event loop stays responsive.
@@ -255,17 +281,73 @@ async def start_render(
                          "covers_dir": str(covers_dir)})
 
 
+@app.post("/api/open-folder", summary="Open a directory in the native file manager")
+def open_folder(payload: OpenFolderRequest) -> JSONResponse:
+    """
+    Open the given directory (or the last output directory when path is omitted)
+    in the operating system's native file manager.
+
+    Supported platforms: macOS (Finder), Windows (Explorer), Linux (xdg-open).
+    Returns ``{"opened": true}`` on success, ``{"opened": false, "detail": "..."}`` otherwise.
+    """
+    target = Path(payload.path) if payload.path else _last_output_dir
+    if target is None:
+        return JSONResponse({"opened": False, "detail": "No output directory known yet."})
+    if not target.is_dir():
+        return JSONResponse({"opened": False, "detail": f"Not a directory: {target}"})
+
+    try:
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(str(target))           # type: ignore[attr-defined]
+        elif system == "Darwin":
+            subprocess.Popen(["open", str(target)])
+        else:
+            subprocess.Popen(["xdg-open", str(target)])
+        return JSONResponse({"opened": True, "path": str(target)})
+    except Exception as exc:
+        return JSONResponse({"opened": False, "detail": str(exc)})
+
+
+@app.get("/api/preview/{filename}", summary="Serve a rendered output image for preview")
+def preview_image(filename: str) -> FileResponse:
+    """
+    Return a rendered output image by its bare filename (stem + extension).
+    The image is read from the last known output directory.
+
+    This avoids exposing arbitrary filesystem paths — callers can only request
+    files that live inside the output directory produced by the most recent render.
+    """
+    if _last_output_dir is None:
+        return JSONResponse(  # type: ignore[return-value]
+            {"detail": "No render has been started yet."},
+            status_code=404,
+        )
+    # Sanitise: only allow the bare filename, no path traversal
+    safe_name = Path(filename).name
+    image_path = _last_output_dir / safe_name
+    if not image_path.is_file():
+        return JSONResponse(  # type: ignore[return-value]
+            {"detail": f"File not found: {safe_name}"},
+            status_code=404,
+        )
+    return FileResponse(str(image_path))
+
+
 # ---------------------------------------------------------------------------
-# Static UI
+# Static mounts
 # Mounted AFTER all /api/* route handlers so FastAPI matches API routes first.
-# StaticFiles with html=True serves index.html for any unmatched path (SPA
-# fallback), so the browser can navigate directly to http://localhost:8000.
-#
+# ---------------------------------------------------------------------------
+
+# Designer Pro — served at /designer/
+_DESIGNER_DIR = _BUNDLE / "tools" / "box3d_designer_pro"
+if _DESIGNER_DIR.is_dir():
+    app.mount("/designer", StaticFiles(directory=str(_DESIGNER_DIR), html=True), name="designer")
+
+# Control Center UI — SPA fallback for any unmatched path.
 # _BUNDLE resolves correctly in both environments:
 #   - Development / pip install : project root   → <root>/web/ui/
 #   - PyInstaller --onefile     : sys._MEIPASS   → <MEIPASS>/web/ui/
-# ---------------------------------------------------------------------------
-
 _UI_DIR = _BUNDLE / "web" / "ui"
 if _UI_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(_UI_DIR), html=True), name="ui")
