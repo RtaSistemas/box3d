@@ -4,9 +4,9 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**3D box art generator for retro game collections — plugin-based profiles, pure Python.**
+**3D box art renderer for retro game collections — plugin profiles, pure Python, optional web UI.**
 
-`box3d` takes flat front-cover images and renders them as photorealistic 3D boxes with textured spines, logo overlays, and baked-in shading. Output is a transparency-correct RGBA image (WebP or PNG) ready for EmulationStation, Pegasus, or any launcher that supports boxart.
+`box3d` takes flat front-cover images and renders them as photorealistic 3D boxes: warped spine, logo overlays, baked shading — ready for EmulationStation, Pegasus, or any launcher that supports boxart.
 
 ```
 covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
@@ -21,14 +21,10 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [CLI Reference](#cli-reference)
-  - [Global options](#global-options)
+- [Web Control Center](#web-control-center)
 - [Architecture](#architecture)
 - [Compositing Pipeline](#compositing-pipeline)
 - [Profiles](#profiles)
-  - [Using Custom Profiles](#using-custom-profiles)
-  - [Built-in Profiles](#built-in-profiles)
-  - [Creating a Profile](#creating-a-profile)
-  - [Profile JSON Schema](#profile-json-schema)
 - [Box3D Designer Pro](#box3d-designer-pro)
 - [Testing](#testing)
 - [Contributing](#contributing)
@@ -42,15 +38,18 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 | Feature | Description |
 |---|---|
 | **Plugin profiles** | Add new box styles by dropping a directory into `profiles/` — zero code changes |
-| **Parallel rendering** | ThreadPoolExecutor with configurable worker count |
-| **Batch circuit breaker** | Aborts a batch after 2 consecutive errors or when errors exceed 20% of processed files, preventing cascading failures |
-| **OOM hardening** | Hard 8 192 px ceiling at three independent layers; immune to pixel-bomb inputs |
-| **Zero-disk-churn** | All intermediate data lives in RAM as `PIL.Image` objects — no temp files |
-| **Pure Python** | Pillow ≥ 10 and NumPy ≥ 1.24 only — no external binaries |
-| **Visual editor** | Browser-based Box3D Designer Pro for authoring profiles interactively |
-| **Multiple formats** | WebP (q 92, default) or PNG output |
-| **Incremental runs** | `--skip-existing` skips already-rendered outputs |
-| **Dry-run mode** | `--dry-run` validates inputs and reports without writing |
+| **Web Control Center** | Browser UI: profile selector, path validation, live progress, preview, file-manager integration |
+| **Parallel rendering** | `ThreadPoolExecutor` with configurable workers; `--workers auto` uses all CPU cores |
+| **Cached homography** | Perspective coefficients are cached with `lru_cache`; identical quads are computed once |
+| **Batch circuit breaker** | Aborts after 2 consecutive errors or when errors exceed 20 % of processed files |
+| **OOM hardening** | Hard 8 192 px ceiling at two independent layers; immune to pixel-bomb inputs |
+| **Zero-disk-churn** | All intermediate images live in RAM as `PIL.Image` objects — no temp files |
+| **Pure Python core** | Pillow ≥ 10 and NumPy ≥ 1.24 only — no external binaries required |
+| **Visual profile editor** | Box3D Designer Pro: browser-based authoring tool, Dark/Light/Retro themes |
+| **Standalone executables** | PyInstaller `--onefile` builds for Linux x86-64 and Windows x86-64 |
+| **Multiple output formats** | WebP (q 92, default) or lossless PNG |
+| **Incremental batches** | `--skip-existing` skips already-rendered outputs |
+| **Dry-run validation** | `--dry-run` validates inputs and reports without writing any files |
 
 ---
 
@@ -62,155 +61,80 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 | Pillow | ≥ 10.0 |
 | NumPy | ≥ 1.24 |
 | OS | Linux · macOS · Windows |
+| **Web extra** (optional) | FastAPI ≥ 0.111, Uvicorn ≥ 0.29, httpx ≥ 0.27 |
 
 ---
 
 ## Installation
 
-### Development install (recommended)
+### Development install
 
 ```bash
 git clone https://github.com/RtaSistemas/box3d.git
 cd box3d
 
-# Ubuntu / Debian
-sudo apt update && sudo apt install -y python3.11 python3.11-venv python3.11-dev
-
 python3.11 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-pip install -U pip setuptools wheel
-pip install -e .                   # Installs in editable mode with all runtime deps
+pip install -e .            # Pillow + NumPy only — full CLI
 ```
 
-### With dev dependencies (for running tests)
+### With web Control Center
+
+```bash
+pip install -e ".[web]"     # adds FastAPI + Uvicorn + httpx
+```
+
+### With dev dependencies (tests)
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-### With web Control Center (optional)
+### Pre-built standalone executables
 
-```bash
-pip install -e ".[web]"          # adds FastAPI + Uvicorn
-uvicorn web.server:app --reload  # open http://localhost:8000
-```
-
-> The web extra is **optional** — the CLI and rendering engine work with only
-> Pillow and NumPy.  Install `.[web]` only if you want the browser-based UI.
-
-### Pre-built binaries
-
-Standalone executables (no Python required) are available on the
-[Releases page](https://github.com/RtaSistemas/box3d/releases):
+No Python required. Download from the [Releases page](https://github.com/RtaSistemas/box3d/releases):
 
 | Platform | Asset |
 |---|---|
 | Linux x86-64 | `box3d-linux-x64` |
 | Windows x86-64 | `box3d-windows-x64.exe` |
 
+On first launch the executable automatically creates the directory structure it needs next to itself.
+
 ---
 
-### Standalone executable — first run
+## Quick Start
 
-On first launch, the executable automatically creates the folder structure it needs
-next to itself — no installer, no configuration required.
-
-**Linux / macOS**
+### CLI
 
 ```bash
-# Download and make executable
-chmod +x box3d-linux-x64
-
-# First run — profiles/ and data/ are created next to the binary
-./box3d-linux-x64 profiles list
-
-# Drop covers into data/inputs/covers/ then render
+# Drop flat cover images into the default input directory
 cp /path/to/covers/*.webp data/inputs/covers/
-./box3d-linux-x64 render --profile mvs
+
+# Render with the MVS (Neo Geo) profile
+box3d render --profile mvs
+
 # Output appears in data/output/converted/
 ```
 
-**Windows**
-
-```powershell
-# First run — profiles\ and data\ are created next to the .exe
-.\box3d-windows-x64.exe profiles list
-
-# Drop covers into data\inputs\covers\ then render
-copy C:\path\to\covers\*.webp data\inputs\covers\
-.\box3d-windows-x64.exe render --profile mvs
-# Output appears in data\output\converted\
-```
-
-**Full layout created automatically:**
-
-```
-<folder containing the exe>/
-├── profiles/                    ← editable plugin profiles (copied from bundle)
-│   ├── mvs/
-│   │   ├── profile.json         ← edit to adjust geometry
-│   │   ├── template.png         ← replace with your own box art template
-│   │   └── assets/
-│   │       ├── logo_top.png     ← system logo top of spine
-│   │       ├── logo_bottom.png  ← system logo bottom of spine
-│   │       └── logo_game.png    ← fallback game logo (optional)
-│   ├── arcade/  ...
-│   └── dvd/     ...
-├── data/
-│   ├── inputs/
-│   │   ├── covers/              ← put your flat cover images here (WebP, PNG, JPG)
-│   │   └── marquees/            ← per-game logos matched by filename stem
-│   └── output/
-│       ├── converted/           ← rendered 3-D box art appears here
-│       ├── temp/                ← pipeline scratch space (auto-managed)
-│       └── logs/                ← log files when --log-file="" is used
-└── instructions.txt             ← quick-start guide (generated on first run)
-```
-
-> **Editing profiles:** `profiles/` is yours to modify. Change `profile.json` to
-> adjust geometry, swap `template.png` for a custom box art, or add `logo_game.png`
-> to `assets/` as a system-wide fallback marquee. New built-in profiles released in
-> future versions are added automatically without overwriting your edits.
-
-> **Adding a new profile:** create a subdirectory inside `profiles/` with a
-> `profile.json` and `template.png`. It is immediately available on the next run
-> without restarting or recompiling.
-
-> **Using profiles stored elsewhere:** pass `--profiles-dir /path/to/your/profiles/`
-> to point box3d at any directory on your system. This is the recommended workflow
-> for Windows executable users who want profiles outside the default location
-> (see [Using Custom Profiles](#using-custom-profiles)).
-
-
-
-```bash
-# 1. Clone and install (see Installation above)
-
-# 2. Prepare your data directories
-mkdir -p data/inputs/covers data/inputs/marquees data/output/converted
-
-# 3. Drop flat cover images into data/inputs/covers/
-cp /path/to/my/covers/*.webp data/inputs/covers/
-
-# 4. Render using the MVS (Neo Geo) profile
-python cli/main.py render --profile mvs
-
-# 5. Find the output in data/output/converted/
-```
-
-Preview a run without writing any files:
-
-```bash
-python cli/main.py render --profile mvs --dry-run --verbose
-```
-
-**Prefer a GUI?** Install the web extra and use the browser-based Control Center instead of the CLI:
+### Web Control Center
 
 ```bash
 pip install -e ".[web]"
-uvicorn web.server:app --reload
-# Navigate to http://localhost:8000
+
+# Launch the server (or just run `box3d` with no arguments)
+box3d serve
+
+# Open http://127.0.0.1:8000 in your browser
+```
+
+Running `box3d` with **no subcommand** automatically starts the web server if the `[web]` extra is installed. If it is not installed, the help text is shown instead.
+
+### Dry-run (validate without rendering)
+
+```bash
+box3d render --profile mvs --dry-run --verbose
 ```
 
 ---
@@ -219,17 +143,17 @@ uvicorn web.server:app --reload
 
 ### Global options
 
-These flags apply to **all commands** and must be placed **before** the subcommand name.
+These apply to **all commands** and must appear **before** the subcommand.
 
 ```
-python cli/main.py [global options] <command> [command options]
+box3d [global options] <command> [command options]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--profiles-dir` | `profiles/` next to the executable | Path to the profiles directory. Override to load profiles from an external location (see [Using Custom Profiles](#using-custom-profiles)). |
+| `--profiles-dir` | `profiles/` next to the exe | Path to the profiles directory |
 | `--verbose` / `-v` | — | Enable DEBUG-level logging |
-| `--log-file` | — | Write log output to a file (`""` uses `data/output/logs/box3d.log`) |
+| `--log-file` | — | Write log to a file (`""` uses `data/output/logs/box3d.log`) |
 
 ---
 
@@ -238,39 +162,43 @@ python cli/main.py [global options] <command> [command options]
 Renders all cover images in the input directory using the specified profile.
 
 ```
-python cli/main.py render --profile <name> [options]
+box3d render --profile <name> [options]
 ```
 
 | Option | Short | Default | Description |
 |---|---|---|---|
 | `--profile` | `-p` | *(required)* | Profile name (must exist in `profiles/`) |
-| `--input` | `-i` | `data/inputs/covers/` | Directory containing source cover images |
+| `--input` | `-i` | `data/inputs/covers/` | Source directory containing cover images |
 | `--output` | `-o` | `data/output/converted/` | Output directory |
-| `--workers` | `-w` | `4` | Number of parallel render threads |
-| `--blur-radius` | `-b` | `20` | Gaussian blur radius applied to sampled spine background (`>= 0`) |
-| `--darken` | `-d` | `180` | Spine dark overlay intensity (`0`–`255`; 0 = off, 255 = solid black) |
-| `--rgb` | | `1.0,1.0,1.0` | RGB channel multipliers in `R,G,B` comma-separated format (e.g. `0.9,0.9,1.1`). Each value scales the respective channel (`> 1` brightens, `< 1` darkens). Must be `>= 0`. |
-| `--cover-fit` | | *(profile default)* | How the cover fills its quad: `stretch`, `fit`, or `crop` |
-| `--spine-source` | | *(profile default)* | Which edge of the cover to sample for the spine: `left`, `right`, or `center` |
-| `--no-rotate` | | *(profile default)* | Disable 90° CW logo rotation on the spine |
-| `--no-logos` | | — | Render spine without any logo overlays |
-| `--output-format` | | `webp` | Output format: `webp` or `png` |
-| `--skip-existing` | | — | Skip covers that already have an output file |
-| `--dry-run` | | — | Validate inputs and report; do not write any files |
-| `--verbose` | `-v` | — | Enable DEBUG-level logging |
-| `--log-file` | | — | Optional path for persistent log output |
+| `--workers` | `-w` | `4` | Parallel threads, or `auto` for `os.cpu_count()` |
+| `--blur-radius` | `-b` | `20` | Gaussian blur on spine background (`≥ 0`) |
+| `--darken` | `-d` | `180` | Spine dark overlay alpha (`0`–`255`) |
+| `--rgb` | `-R` | `1.0,1.0,1.0` | RGB channel multipliers, comma-separated (e.g. `0.9,0.9,1.1`) |
+| `--cover-fit` | `-c` | *(profile default)* | `stretch` · `fit` · `crop` |
+| `--spine-source` | | *(profile default)* | Edge sampled for spine: `left` · `right` · `center` |
+| `--no-rotate` | `-r` | — | Disable logo rotation on the spine |
+| `--no-logos` | `-l` | — | Skip all spine logo overlays |
+| `--top-logo` | | — | Override path to top spine logo |
+| `--bottom-logo` | | — | Override path to bottom spine logo |
+| `--marquees-dir` | | `data/inputs/marquees/` | Per-game marquee directory |
+| `--output-format` | `-f` | `webp` | `webp` or `png` |
+| `--skip-existing` | `-s` | — | Skip covers that already have an output file |
+| `--dry-run` | | — | Validate inputs without writing any files |
 
 **Examples:**
 
 ```bash
-# Render all covers with the arcade profile, 8 workers, PNG output
-python cli/main.py render -p arcade -w 8 --output-format png
+# Render all covers with 8 workers, PNG output
+box3d render -p arcade -w 8 --output-format png
 
-# Override spine appearance inline
-python cli/main.py render -p mvs --blur-radius 30 --darken 200 --rgb 0.85,0.85,1.0
+# Tinted spine (slight blue shift)
+box3d render -p mvs --blur-radius 30 --darken 200 --rgb 0.85,0.85,1.0
 
-# Incremental update — only process new covers
-python cli/main.py render -p dvd --skip-existing
+# Incremental — only process new covers
+box3d render -p dvd --skip-existing
+
+# Use all available CPU cores
+box3d render -p mvs --workers auto
 ```
 
 ---
@@ -278,9 +206,31 @@ python cli/main.py render -p dvd --skip-existing
 ### `profiles`
 
 ```bash
-python cli/main.py profiles list      # List all discovered profiles with metadata
-python cli/main.py profiles validate  # Verify that each profile's template.png exists
+box3d profiles list       # List all discovered profiles with dimensions
+box3d profiles validate   # Verify each profile's template.png exists and geometry is within OOM bounds
 ```
+
+---
+
+### `serve`
+
+Starts the Box3D Web Control Center (requires the `[web]` extra).
+
+```
+box3d serve [--host HOST] [--port PORT]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--host` | `127.0.0.1` | Bind address |
+| `--port` | `8000` | TCP port |
+
+```bash
+box3d serve                           # http://127.0.0.1:8000
+box3d serve --host 0.0.0.0 --port 9000  # expose on LAN
+```
+
+> Running `box3d` with no subcommand is equivalent to `box3d serve` when the `[web]` extra is installed.
 
 ---
 
@@ -289,8 +239,53 @@ python cli/main.py profiles validate  # Verify that each profile's template.png 
 Opens Box3D Designer Pro in the default browser.
 
 ```bash
-python cli/main.py designer
+box3d designer
 ```
+
+The Designer Pro is also reachable at `http://127.0.0.1:8000/designer/` when the web server is running.
+
+---
+
+## Web Control Center
+
+A browser-based graphical interface for running render jobs without the CLI.
+
+### Start
+
+```bash
+pip install -e ".[web]"
+box3d serve
+# Open http://127.0.0.1:8000
+```
+
+### Features
+
+| Panel | What it does |
+|---|---|
+| **Profile** | Dropdown auto-populated from `profiles/`; shows template dimensions |
+| **Paths** | Three path inputs (covers / output / marquees) with real-time directory validation; `📂` button opens each folder in the native file manager |
+| **Options** | Workers, blur radius, darken alpha, cover fit, spine source, output format, RGB tint picker |
+| **RGB tint** | Colour picker maps to `[r, g, b]` channel multipliers; neutral (#808080) sends `null` (no tinting) |
+| **Start Render** | Locked while rendering; sends `POST /api/render` then opens an SSE stream |
+| **Live progress** | Progress bar + per-cover log driven by real-time Server-Sent Events |
+| **Summary modal** | Post-render stats, first-output preview image, and "Open Output Folder" button |
+| **Designer Pro nav** | Header link opens the visual profile editor in a new tab |
+
+### API endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/profiles` | `GET` | List profiles with name and dimensions |
+| `/api/validate-path` | `POST` | Check if a path resolves to an existing directory |
+| `/api/render` | `POST` | Start a render job (returns immediately) |
+| `/api/progress` | `GET` | SSE stream of per-cover progress events |
+| `/api/open-folder` | `POST` | Open a directory in the OS file manager |
+| `/api/preview/{filename}` | `GET` | Serve a rendered output image for in-browser preview |
+| `/designer/` | static | Box3D Designer Pro embedded in the server |
+
+Interactive Swagger docs: `http://127.0.0.1:8000/docs`
+
+> Full user manual: [`docs/web_manual.md`](docs/web_manual.md)
 
 ---
 
@@ -298,163 +293,145 @@ python cli/main.py designer
 
 ```
 box3d/
-├── core/                        # Domain & orchestration — no rendering logic
-│   ├── models.py                # Immutable dataclasses: Profile, ProfileGeometry,
-│   │                            #   RenderOptions, CoverResult, …
-│   ├── registry.py              # Plugin discovery & JSON validation
-│   └── pipeline.py              # Parallel rendering orchestrator (ThreadPoolExecutor)
-│
-├── engine/                      # Pure rendering primitives — no I/O, no profiles
-│   ├── perspective.py           # 8-coefficient perspective warp (numpy.linalg.solve)
-│   ├── blending.py              # alpha_weighted_screen, dst_in, build_silhouette_mask
-│   ├── spine_builder.py         # 2-D spine strip: blur → overlay → logos
-│   └── compositor.py           # Per-cover entry point; coordinates engine modules
-│
-├── profiles/                    # Plugin bundles (JSON + template + assets)
-│   ├── mvs/                     # Neo Geo MVS cartridge  703×1000
-│   │   ├── profile.json         # Geometry + spine layout
-│   │   ├── template.png         # RGBA box template
-│   │   └── assets/
-│   │       ├── logo_top.png     # System logo — top of spine
-│   │       ├── logo_bottom.png  # System logo — bottom of spine
-│   │       └── logo_game.png    # Fallback game logo (used when no marquee found)
-│   ├── arcade/                  # Arcade cabinet          665×907
-│   └── dvd/                     # DVD case                633×907
-│
 ├── cli/
-│   └── main.py                  # Thin wiring layer — argparse → core → engine
+│   ├── main.py          ← argparse wiring, command handlers, logging setup
+│   ├── bootstrap.py     ← PyInstaller-aware path resolution (_BUNDLE, _DATA, _PROFILES)
+│   │                       first-run folder creation and profile copying
+│   └── utils.py         ← parse_rgb_str() helper
+│
+├── core/                ← Domain types and orchestration — no rendering logic
+│   ├── models.py        ← Frozen dataclasses: Profile, RenderOptions, RenderSummary, …
+│   ├── registry.py      ← Plugin discovery, JSON validation, path-traversal protection
+│   └── pipeline.py      ← Batch render orchestrator (ThreadPoolExecutor + circuit breaker)
+│
+├── engine/              ← Pure rendering primitives — no I/O, no profiles, no global state
+│   ├── perspective.py   ← 8-coefficient perspective warp (numpy.linalg.solve + lru_cache)
+│   ├── blending.py      ← alpha_weighted_screen, dst_in, build_silhouette_mask
+│   ├── spine_builder.py ← 2-D spine strip: sample → blur → darken → logo composite
+│   └── compositor.py    ← Per-cover entry point; coordinates all engine modules
+│
+├── web/                 ← Optional FastAPI backend (pip install .[web])
+│   ├── server.py        ← REST + SSE API; static mounts for UI and Designer Pro
+│   └── ui/
+│       ├── index.html   ← Control Center SPA (vanilla JS, no build step)
+│       ├── app.js       ← Fetch + EventSource client logic
+│       └── style.css    ← Dark neon palette matching Designer Pro
+│
+├── profiles/            ← Plugin bundles (JSON + template + assets)
+│   ├── mvs/             ← Neo Geo MVS cartridge  703 × 1 000 px
+│   │   ├── profile.json
+│   │   ├── template.png
+│   │   └── assets/
+│   │       ├── logo_top.png
+│   │       ├── logo_bottom.png
+│   │       └── logo_game.png
+│   ├── arcade/          ← Arcade cabinet  665 × 907 px
+│   └── dvd/             ← DVD case  633 × 907 px
 │
 ├── tools/
 │   └── box3d_designer_pro/
-│       └── index.html           # Self-contained visual profile editor
+│       └── index.html   ← Self-contained visual profile editor (v1.3.0)
 │
 └── tests/
-    ├── test_v2.py               # 52 unit & integration tests
-    ├── run_visual_tests.py      # Manual visual verification runner
-    └── assets/                  # Fixtures: cover, marquee, logos, templates
+    ├── test_v2.py       ← 84 unit + integration tests
+    ├── test_web.py      ← 14 FastAPI / SSE tests (skipped if [web] not installed)
+    ├── run_visual_tests.py
+    └── assets/          ← Fixtures: cover, marquee, logos, templates
 ```
 
 ### Design Principles
 
-**1. Profiles as plugins.**
-No code change is required to add a new box style. Drop a directory into `profiles/` containing `profile.json` and `template.png` and it is immediately available. The registry discovers profiles at startup via filesystem scan with path-traversal mitigation.
+**1. Three-tier layered architecture.**  
+`cli/` parses and validates, `core/` orchestrates, `engine/` renders. No cross-layer imports in the wrong direction.
 
-**2. Strict layer separation.**
-`core/` declares domain types and orchestrates work — it has no rendering knowledge.
-`engine/` implements rendering primitives — it has no profile or I/O knowledge.
-`cli/` is a thin wiring layer that parses arguments and connects the two.
+**2. Profiles as zero-code plugins.**  
+Drop a directory containing `profile.json` + `template.png` into `profiles/` and it is immediately discovered. The registry applies strict validation (`^[a-zA-Z0-9_-]+$` name regex, type checking on every field) before any profile reaches the engine.
 
-**3. Pure Python rendering.**
-No external binaries. Perspective warps use `numpy.linalg.solve` for coefficient computation and `PIL.Image.transform` for pixel resampling (BICUBIC). Color operations use Pillow's native C path wherever possible.
+**3. Pure-function rendering.**  
+Every `engine/` function accepts `PIL.Image` objects and returns `PIL.Image` objects. No disk I/O, no global state, no side effects. Thread-safe by construction.
 
-**4. Defense-in-depth memory safety.**
-OOM protection exists at two independent layers: profile load time (geometry validation) and image processing time (preventive downscale). The hard ceiling is 8 192 px in any dimension.
+**4. Defense-in-depth memory safety.**  
+OOM protection exists at two independent layers: profile load time (geometry validation, hard 8 192 px ceiling) and image open time (`_safe_open()` applies `.thumbnail()`). A pathological input cannot exhaust RAM even if one layer is bypassed.
 
-**5. Zero-disk-churn.**
-Intermediate images (spine strip, warped cover, blended result) exist only as in-memory `PIL.Image` objects. No temporary files are written. This reduces latency and SSD wear in batch workloads.
+**5. Zero-disk-churn.**  
+All intermediate images (spine strip, warped cover, blended result) are `PIL.Image` objects in RAM. The only writes are the final output files. No temp directories.
 
-**6. Thread safety by design.**
-Render functions hold no shared mutable state. The pipeline pre-loads the template once and passes it as an argument to each worker.
+**6. Observable pipeline.**  
+`RenderPipeline.run()` accepts an `on_progress` callback invoked after each cover completes. The web server uses this to push SSE events without polling.
 
 ---
 
 ## Compositing Pipeline
 
-Each cover goes through a five-step pipeline inside `engine/compositor.py`:
+Each cover goes through five steps inside `engine/compositor.py`:
 
 ```
 transparent canvas  (template_size)
         │
         ├─ 1. Perspective warp — spine strip
-        │       build_spine() → warp(spine_quad, spine_size)
+        │       build_spine() → warp(spine_quad)
         │
         ├─ 2. Perspective warp — front cover
-        │       resize_for_fit(cover_fit) → warp(cover_quad, cover_size)
+        │       resize_for_fit(mode) → warp(cover_quad)
         │
         ├─ 3. Alpha-weighted Screen blend — template overlay
         │       alpha_weighted_screen(canvas, template)
         │
         ├─ 4. DstIn — clip to union silhouette
-        │       build_silhouette_mask(canvas, template) → dst_in(canvas, mask)
+        │       build_silhouette_mask() → dst_in(canvas, mask)
         │
         └─ 5. Save  (WebP q 92  or  PNG lossless)
 ```
 
-**Why alpha-weighted Screen blend?**
-Standard Screen blend would cause near-white, near-transparent template pixels (common in arcade/dvd profiles, alpha ≈ 12/255) to wash out dark covers. Weighting by alpha preserves intended shading at opaque borders while keeping transparent regions unaffected.
+**Alpha-weighted Screen blend (step 3):** Standard Screen blend washes out dark covers because near-transparent template pixels still contribute luminance. Weighting by `template_alpha / 255` means zero contribution where the template is fully transparent — the correct physical model.
 
-**Why union silhouette for DstIn?**
-The MVS profile uses a mostly-transparent template. A DstIn keyed only on the template alpha would erase the cover face. The union of template alpha and canvas alpha is used as the clip mask, ensuring the cover remains visible.
+**Union silhouette for DstIn (step 4):** The MVS profile uses a mostly-transparent template. Keying DstIn only on template alpha would erase the cover face. The union (`max`) of template alpha and canvas alpha is used as the clip mask, preserving the cover regardless of template transparency.
 
 ---
 
 ## Profiles
 
-### Using Custom Profiles
+### Built-in profiles
 
-The `--profiles-dir` global flag lets you load profiles from any directory, not just the default `profiles/` folder next to the executable.
-
-**When is this useful?**
-
-- Running the **Windows or Linux executable** and wanting profiles in a separate folder
-- Managing **multiple profile sets** for different systems without mixing them
-- Using profiles on a **network drive** or shared storage
-
-**Workflow:**
-
-```bash
-# 1. Create your external profiles directory
-mkdir ~/my-box3d-profiles
-
-# 2. Copy an existing profile as a starting point
-cp -r profiles/mvs ~/my-box3d-profiles/ps2
-
-# 3. Edit ~/my-box3d-profiles/ps2/profile.json and template.png as needed
-
-# 4. Render using the external directory
-python cli/main.py --profiles-dir ~/my-box3d-profiles render --profile ps2
-```
-
-**Windows executable:**
-
-```powershell
-.\box3d-windows-x64.exe --profiles-dir C:\MyProfiles render --profile ps2
-```
-
-> Profiles inside `--profiles-dir` are discovered by the same filesystem scan as built-in
-> profiles. All rules apply: each subdirectory needs `profile.json` and `template.png`.
-
----
-
-### Built-in Profiles
-
-| Name | Box Style | Template Size | Cover Fit | Spine Source |
+| Name | Box style | Template size | Cover fit | Spine source |
 |---|---|---|---|---|
 | `mvs` | Neo Geo MVS cartridge | 703 × 1 000 px | stretch | left |
 | `arcade` | Arcade cabinet | 665 × 907 px | stretch | left |
 | `dvd` | DVD case | 633 × 907 px | stretch | left |
 
----
-
-### Creating a Profile
-
-#### Step 1 — Scaffold the directory
+### Folder structure
 
 ```
-profiles/
-└── ps2/
-    ├── profile.json          ← required
-    ├── template.png          ← required (RGBA, any size up to 8192 × 8192)
-    └── assets/               ← optional
-        ├── logo_top.png      ← system logo placed at the top of the spine
-        ├── logo_bottom.png   ← system logo placed at the bottom of the spine
-        └── logo_game.png     ← fallback game logo (used when no marquee found
-                                 in data/inputs/marquees/ for the current cover)
+profiles/ps2/
+├── profile.json          ← required
+├── template.png          ← required (RGBA, max 8 192 × 8 192 px)
+└── assets/               ← optional
+    ├── logo_top.png      ← placed at top of spine
+    ├── logo_bottom.png   ← placed at bottom of spine
+    └── logo_game.png     ← fallback if no per-game marquee is found
 ```
 
-Supported extensions for all logo files: `.png`, `.webp`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`.
+Supported extensions for logo files: `.png`, `.webp`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`.
 
-#### Step 2 — Author the profile JSON
+### Game logo resolution order
+
+For each cover, the game logo on the spine is resolved in this order:
+
+1. `data/inputs/marquees/<cover-stem>.*` — per-game marquee matched by filename stem.
+2. `profiles/<name>/assets/logo_game.*` — profile-level fallback.
+3. `None` — spine rendered without a game logo.
+
+### Creating a profile
+
+#### Step 1 — Scaffold
+
+```
+profiles/ps2/
+├── profile.json
+└── template.png
+```
+
+#### Step 2 — Author `profile.json`
 
 ```json
 {
@@ -485,25 +462,21 @@ Supported extensions for all logo files: `.png`, `.webp`, `.jpg`, `.jpeg`, `.bmp
 }
 ```
 
-#### Step 3 — Use Box3D Designer Pro for visual alignment
+#### Step 3 — Visual alignment with Designer Pro
 
 ```bash
-python cli/main.py designer
+box3d designer
+# or navigate to http://127.0.0.1:8000/designer/ when the server is running
 ```
 
-Load your `template.png`, position the `spine` and `cover` quads interactively, and export the resulting `profile.json`.
+Load your `template.png`, position the quads, export `profile.json`.
 
 #### Step 4 — Test
 
 ```bash
-# Dry-run to validate geometry without writing output
-python cli/main.py render --profile ps2 --dry-run --verbose
-
-# Full render against a test cover
-python cli/main.py render --profile ps2 --input tests/assets/ --output /tmp/ps2-test/
+box3d render --profile ps2 --dry-run --verbose
+box3d render --profile ps2 --input tests/assets/ --output /tmp/ps2-test/
 ```
-
----
 
 ### Profile JSON Schema
 
@@ -511,138 +484,143 @@ python cli/main.py render --profile ps2 --input tests/assets/ --output /tmp/ps2-
 |---|---|---|---|
 | `name` | string | yes | Identifier (must match directory name) |
 | `description` | string | no | Human-readable description |
-| `version` | string | no | Semver string for the profile |
-| `template_size` | `{width, height}` | yes | Pixel dimensions of `template.png` |
+| `version` | string | no | Semver string |
+| `template_size` | `{width, height}` | yes | Pixel dimensions of `template.png` (max 8 192 px) |
 | `spine` | `{width, height}` | yes | Logical spine strip dimensions |
 | `cover` | `{width, height}` | yes | Logical cover dimensions |
-| `spine_quad` | `{tl, tr, br, bl}` | yes | Target quad in template space for spine warp |
-| `cover_quad` | `{tl, tr, br, bl}` | yes | Target quad in template space for cover warp |
+| `spine_quad` | `{tl, tr, br, bl}` | yes | Spine warp target quad in template space |
+| `cover_quad` | `{tl, tr, br, bl}` | yes | Cover warp target quad in template space |
 | `spine_source_frac` | float | no | Fraction of cover width to sample (default `0.20`) |
-| `spine_source` | `left\|right\|center` | no | Edge of cover to sample for spine background |
-| `cover_fit` | `stretch\|fit\|crop` | no | How the cover image fills `cover` dimensions |
-| `spine_layout.game` | `{max_w, max_h, center_y, rotate}` | yes | Game-logo slot on the spine |
-| `spine_layout.top` | `{max_w, max_h, center_y, rotate}` | no | Top-logo slot on the spine |
-| `spine_layout.bottom` | `{max_w, max_h, center_y, rotate}` | no | Bottom-logo slot on the spine |
-| `spine_layout.logo_alpha` | float 0–1 | no | Opacity of composited logos (default `0.85`) |
-| `spine_layout.*.rotate` | int (degrees) | no | Rotation angle per slot in degrees (PIL convention: negative = CW). Default `0`. |
+| `spine_source` | `left\|right\|center` | no | Cover edge sampled for spine background |
+| `cover_fit` | `stretch\|fit\|crop` | no | How the cover fills the `cover` quad |
+| `spine_layout.game` | `{max_w, max_h, center_y}` | yes | Game-logo slot |
+| `spine_layout.top` | `{max_w, max_h, center_y}` | no | Top-logo slot |
+| `spine_layout.bottom` | `{max_w, max_h, center_y}` | no | Bottom-logo slot |
+| `spine_layout.logo_alpha` | float 0–1 | no | Logo opacity (default `0.85`) |
+| `spine_layout.*.rotate` | int (degrees) | no | Rotation per slot (negative = CW) |
 
 Each quad point is `[x, y]` in pixel coordinates within `template_size`.
 
-#### Logo resolution order
+### Custom profiles directory
 
-For each cover, the game logo on the spine is resolved in this order:
+```bash
+# Load profiles from any path
+box3d --profiles-dir ~/my-profiles render --profile ps2
 
-1. `data/inputs/marquees/<cover-stem>.*` — dynamic per-game marquee matched by filename.
-2. `profiles/<n>/assets/logo_game.*` — profile-level fallback (e.g. system manufacturer logo).
-3. None — spine is rendered without a game logo.
-
-The `--no-logos` flag disables all logo rendering (game, top, and bottom).
+# Windows executable
+.\box3d-windows-x64.exe --profiles-dir C:\MyProfiles render --profile ps2
+```
 
 ---
 
-## Box3D Control Center (Web UI)
+## Standalone executable — first run
 
-A browser-based graphical interface for running render jobs without using the CLI.
+On first launch, the executable creates the entire working tree next to itself:
 
-### Install and launch
-
-```bash
-pip install -e ".[web]"
-uvicorn web.server:app --reload
+```
+<exe-directory>/
+├── profiles/                ← editable copy of built-in profiles
+│   ├── mvs/
+│   │   ├── profile.json
+│   │   ├── template.png
+│   │   └── assets/
+│   ├── arcade/
+│   └── dvd/
+├── data/
+│   ├── inputs/
+│   │   ├── covers/          ← drop your flat cover images here
+│   │   └── marquees/        ← per-game spine logos (matched by filename stem)
+│   └── output/
+│       ├── converted/       ← rendered 3-D box art written here
+│       └── logs/            ← log files when --log-file is used
+└── instructions.txt         ← generated quick-start guide
 ```
 
-Open **http://localhost:8000** in any modern browser.
-
-### What it provides
-
-| Feature | Details |
-|---|---|
-| Profile selector | Dropdown auto-populated from your `profiles/` directory |
-| Path validation | Real-time directory check as you type — green/red border feedback |
-| Full options | All render parameters (workers, blur, darken, cover-fit, format, flags) |
-| Live progress | Server-Sent Events stream updates a progress bar and log in real time |
-| Render summary | Modal shows succeeded / skipped / errors / timing after completion |
-
-### Architecture
-
-The web server is a **thin FastAPI layer** that calls the same `RenderPipeline`
-used by the CLI.  The rendering engine (`core/`, `engine/`) is completely
-unchanged.  The pipeline runs in a background thread so the UI stays responsive
-during long batches.
-
-> **Read the full user manual:** [`docs/web_manual.md`](docs/web_manual.md)
+> Future updates add new built-in profiles to `profiles/` automatically without overwriting your edits.
 
 ---
 
 ## Box3D Designer Pro
 
-A self-contained, browser-based visual editor for authoring and editing profiles.
+A self-contained visual editor for authoring and editing profiles.
+
+- **No server, no build step** — open `tools/box3d_designer_pro/index.html` directly, or navigate to `/designer/` when the Control Center is running.
+- **Dark / Light / Retro themes** — toggle from the toolbar; preference is saved in `localStorage`.
+- **Capabilities:** load any PNG template, drag quads, adjust spine layout slots, real-time JSON preview, export `profile.json`, import existing profiles.
 
 ```bash
-python cli/main.py designer
+box3d designer          # opens Designer Pro in the default browser
 ```
-
-Located at `tools/box3d_designer_pro/index.html` — no server or build step required.
-
-**Capabilities:**
-
-- Load any PNG template image as the design canvas
-- Add and position `spine`, `cover`, `logo`, and `marquee` regions
-- Drag to move; corner handles to resize; quad-point editing for perspective regions
-- Configurable grid with snap-to-grid
-- Real-time JSON preview of the generated `profile.json`
-- Export `profile.json` directly or as an embeddable Python snippet
-- Import existing profiles for editing
 
 ---
 
 ## Testing
 
-### Running the test suite
+### Unit and integration tests
 
 ```bash
 pytest tests/test_v2.py -v
 ```
 
-Expected output: **52 tests passed**.
+Expected: **84 tests passed**.
+
+### Web API tests
+
+```bash
+pytest tests/test_web.py -v    # skipped automatically if [web] extra not installed
+```
+
+Expected: **14 tests passed**.
+
+### Full suite
+
+```bash
+pytest tests/ -v               # 98 tests total
+```
 
 ### Test coverage breakdown
 
 | Class | Tests | Scope |
 |---|---|---|
-| `TestModels` | 3 | Domain dataclass invariants, OOM boundary |
-| `TestRegistry` | 13 | Profile discovery, JSON validation, custom profiles, path-traversal rejection |
-| `TestPerspective` | 9 | Warp correctness, `stretch`/`fit`/`crop` modes, all built-in profiles |
-| `TestBlending` | 9 | Screen blend, DstIn, diagonal color matrix, silhouette mask |
+| `TestModels` | 3 | Frozen dataclass invariants, OOM boundary |
+| `TestRegistry` | 13 | Profile discovery, JSON validation, custom dirs, path-traversal rejection |
+| `TestPerspective` | 9 | Warp correctness, stretch/fit/crop modes, all built-in profiles |
+| `TestBlending` | 9 | Screen blend, DstIn, color matrix, silhouette mask |
 | `TestSpineBuilder` | 7 | Spine generation for all built-in profiles |
-| `TestPipeline` | 8 | End-to-end batch render, dry-run, worker scaling, all profiles |
-| `TestGameLogoFallback` | 3 | Logo resolution: fallback to profile asset, None when absent, dynamic priority |
+| `TestPipeline` | 8 | End-to-end batch render, dry-run, worker scaling |
+| `TestGameLogoFallback` | 3 | Marquee priority, profile fallback, absent logo |
+| `TestCaching` | ... | `lru_cache` hit/miss for perspective coefficients |
+| `TestGetProfiles` | 5 | `/api/profiles` — status, schema, built-ins, OOM limit |
+| `TestValidatePath` | 5 | `/api/validate-path` — valid dir, missing, file, empty, 422 |
+| `TestRenderEndpoint` | 4 | `/api/render` — unknown profile, bad dir, started, 422 |
 
 ### Visual regression tests
 
 ```bash
 python tests/run_visual_tests.py
-# Output written to tests/visual_output/ (gitignored)
+python tests/run_visual_tests.py --open    # open HTML report
+python tests/run_visual_tests.py --workers 8
 ```
+
+Output written to `tests/visual_output/` (gitignored).
 
 ---
 
 ## Contributing
 
-1. Fork the repository and create a feature branch.
-2. Run `pip install -e ".[dev]"` to install dev dependencies.
-3. Make your changes and add tests covering the new behaviour.
-4. Run `pytest tests/test_v2.py -v` — all 52 tests must pass.
+1. Fork and create a feature branch.
+2. `pip install -e ".[dev,web]"` to install all dev dependencies.
+3. Add tests for any new behaviour.
+4. `pytest tests/ -v` — all 98 tests must pass.
 5. Open a pull request against `main`.
 
-**Adding a new built-in profile** follows the same process as [Creating a Profile](#creating-a-profile). Include the `template.png` and at least one end-to-end test in `TestPipeline`.
+**Adding a new built-in profile:** follow [Creating a profile](#creating-a-profile). Include `template.png` and at least one end-to-end test in `TestPipeline`.
 
 ---
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the full history of changes, including
-all additions, fixes, and removals since v1.x.
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ---
 

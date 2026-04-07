@@ -148,3 +148,91 @@ JavaScript and CSS. The key scope decisions:
 The trade-off is that the file grows large as features are added. The current limit is
 acceptable; if the file exceeds ~500 kB, it should be split into linked external assets
 (still no build step required).
+
+In v2.1.0 the Designer Pro was extended with three selectable themes (Dark / Light / Retro)
+stored in `localStorage`. The Retro theme adds a CRT flicker animation via CSS keyframes.
+The tool is now also accessible at `http://127.0.0.1:8000/designer/` when the Control
+Center server is running — this avoids the `file://` origin restriction that blocks some
+browser features (e.g. the Clipboard API used for JSON export).
+
+---
+
+## 8. Homography Caching with `lru_cache`
+
+The 8-coefficient perspective system is small (8 equations), so the `numpy.linalg.solve`
+call is fast. However, when rendering a large batch where every cover uses the same profile,
+the system is solved for the *same pair of source and destination quads* thousands of times.
+
+The fix is `functools.lru_cache` on an inner function that accepts hashable tuples:
+
+```python
+@lru_cache(maxsize=64)
+def _solve_cached(src_pts: tuple, dst_pts: tuple) -> tuple[float, ...]:
+    ...
+
+def solve_coefficients(src_pts, dst_pts) -> tuple[float, ...]:
+    return _solve_cached(tuple(src_pts), tuple(dst_pts))
+```
+
+The public function converts the lists that callers pass into tuples (hashable) before
+delegating. The cache hit rate is effectively 100 % for same-profile batches. The
+`maxsize=64` limit is generous: a typical deployment has 3 profiles × 2 quads = 6 entries.
+
+The cache is module-level, so it persists across pipeline runs within the same process —
+the web server benefits doubly because it handles multiple sequential render requests.
+
+---
+
+## 9. The Web Control Center: Sync-to-Async Bridge
+
+The `RenderPipeline` is synchronous and CPU-bound. FastAPI runs an async event loop.
+Running the pipeline directly in a route handler would block the loop — the browser
+could not receive any response (including SSE events) until the batch completed.
+
+The solution is `asyncio.to_thread()` via FastAPI's `BackgroundTasks`:
+
+```python
+background_tasks.add_task(asyncio.to_thread, _run_pipeline)
+return JSONResponse({"status": "started"})
+```
+
+`asyncio.to_thread` dispatches `_run_pipeline` to the default `ThreadPoolExecutor`
+managed by the event loop, freeing the loop to serve SSE events.
+
+The progress bridge is a `queue.Queue[dict]`:
+- The sync worker thread calls `queue.put()` after each cover.
+- The async SSE generator calls `queue.get_nowait()` in a polling loop with
+  `await asyncio.sleep(0.05)` between attempts.
+
+This pattern avoids any shared mutable state between the worker and the async generator.
+The only coupling is through the queue, which is thread-safe by design.
+
+The sentinel event (`done: -1`) signals to both the SSE generator (close the stream)
+and the browser (render is complete, show the summary modal).
+
+---
+
+## 10. Eliminating `temp_dir` as an Architectural Ghost
+
+The `temp_dir` parameter appeared in `RenderPipeline.__init__` and in `cli/main.py`
+as a legacy artefact from before Sprint 3 (ADR-003: Zero-Disk-Churn). Sprint 3 removed
+all intermediate disk writes; from that point forward, `temp_dir` was:
+
+1. Accepted as a constructor parameter.
+2. Stored as `self.temp_dir`.
+3. Had `.mkdir(parents=True, exist_ok=True)` called in `run()`.
+4. Never written to by any code.
+
+This is an architectural ghost — the parameter had outlived its purpose. SPRINT-UX-FINAL
+removed it:
+
+- `run()` no longer calls `.mkdir()`.
+- `self.temp_dir` is no longer stored.
+- `temp_dir` remains in the `__init__` signature as a silent keyword-only parameter
+  for API compatibility (callers that pass it explicitly do not break).
+- `cli/bootstrap.py` no longer creates `data/output/temp/`.
+- The `--temp` CLI flag is removed.
+
+The lesson: when an abstraction is no longer used, remove it completely rather than
+leaving it in place "just in case". The presence of the parameter implied that a temp
+directory was needed, which was false and misleading to future maintainers.

@@ -178,3 +178,86 @@ geometry is lost during the silhouette clip.
   of the union (src wins when src_alpha > dst_alpha; dst wins otherwise).
 - **Negative:** The function cannot be used as a generic 'preserve-dst-alpha screen'
   blend.  Its contract is specific to this pipeline and is documented as such.
+
+---
+
+## ADR-005: Web API — Sync Pipeline in Async Server via `asyncio.to_thread`
+
+**Status:** Accepted
+
+**Date:** 2026-03
+
+### Context
+
+Box3D added an optional FastAPI web server (`web/server.py`) to expose the rendering
+engine over HTTP with a browser-based Control Center.  `RenderPipeline` is synchronous
+and CPU-bound.  Running it directly inside an `async def` route handler blocks the
+event loop: the browser cannot receive any response — including SSE progress events —
+until the entire batch completes.
+
+### Decision
+
+Dispatch `_run_pipeline` to a thread via `asyncio.to_thread()` inside a FastAPI
+`BackgroundTask`:
+
+```python
+background_tasks.add_task(asyncio.to_thread, _run_pipeline)
+return JSONResponse({"status": "started"})
+```
+
+Progress events are bridged from the sync worker thread to the async SSE generator
+using a `queue.Queue[dict]`.  The async generator polls the queue with
+`queue.get_nowait()` and yields control between polls with `await asyncio.sleep(0.05)`.
+
+### Consequences
+
+- **Positive:** The event loop stays responsive during a batch; SSE events flow in real
+  time.
+- **Positive:** No changes to `RenderPipeline` — it remains a pure synchronous class.
+- **Positive:** `queue.Queue` is thread-safe by design; no locks required.
+- **Negative:** A single `_progress_queue` serves the single-operator desktop use-case.
+  Multi-user deployments would need a keyed `dict[session_id, Queue]`.
+- **Negative:** If the browser disconnects before the sentinel, the worker still runs to
+  completion and the queue fills; events are silently dropped.
+
+---
+
+## ADR-006: Observable Pipeline — `on_progress` Callback
+
+**Status:** Accepted
+
+**Date:** 2026-03
+
+### Context
+
+Both the CLI and the web server need progress reporting, but with different output
+channels: the CLI writes to stdout; the web server pushes to an SSE queue.
+Hardcoding either channel inside `RenderPipeline.run()` would couple the pipeline to
+a specific output mechanism and make the other impossible without modification.
+
+### Decision
+
+`RenderPipeline.run()` accepts an optional `on_progress` callback:
+
+```python
+def run(
+    self,
+    on_progress: Callable[[int, int, CoverResult], None] | None = None,
+) -> RenderSummary:
+```
+
+The callback is fired inside the `as_completed` loop immediately after each cover
+completes.  Callers supply their own implementation:
+- CLI: a closure that calls `print()`.
+- Web server: a closure that calls `_progress_queue.put()`.
+
+`run()` returns a `RenderSummary` dataclass regardless of whether a callback is supplied.
+
+### Consequences
+
+- **Positive:** `RenderPipeline` has no knowledge of how progress is displayed.
+- **Positive:** The same pipeline class is used by CLI and web server without modification.
+- **Positive:** `RenderSummary` provides a structured result for programmatic consumption.
+- **Negative:** The callback runs inside the `as_completed` loop on the main thread of
+  the `ThreadPoolExecutor` context; heavy callback implementations could become a
+  bottleneck.  In practice both implementations are O(1) (print + queue.put).
