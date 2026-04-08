@@ -1002,3 +1002,96 @@ class TestEngineAsserts:
             game_logo=None, top_logo=None, bottom_logo=None,
         )
         assert result.mode == "RGBA"
+
+
+# ===========================================================================
+# Circuit Breaker — BUG-03 + BUG-04 regression tests
+# ===========================================================================
+
+class TestCircuitBreaker:
+    """Regression tests for circuit breaker threshold and on_progress ordering."""
+
+    def _make_pipeline(self, tmp_path, covers_dir, no_logos=False):
+        from core.pipeline import RenderPipeline
+        reg = ProfileRegistry(PROFILES).load()
+        return RenderPipeline(
+            profile      = reg.get("mvs"),
+            covers_dir   = covers_dir,
+            output_dir   = tmp_path / "out",
+            options      = RenderOptions(workers=1),
+            logo_paths   = {},
+            marquees_dir = tmp_path / "m",
+            no_logos     = no_logos,
+        )
+
+    def test_single_bad_file_in_3_cover_batch_does_not_trip(self, tmp_path):
+        """BUG-03: 1 corrupt file out of 3 must NOT trip the circuit breaker.
+        Previously error_threshold=max(1, int(3*0.20))=1, so a single error
+        would abort the batch and skip the remaining 2 valid covers.
+        """
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "good1.webp")
+        shutil.copy(ASSETS / "cover.webp", covers / "good2.webp")
+        (covers / "bad.webp").write_bytes(b"not an image")  # corrupt
+
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run()
+        # 2 should succeed, 1 should fail, breaker must NOT trip
+        assert stats.succeeded == 2
+        assert stats.failed    == 1
+        assert stats.breaker_tripped is False
+
+    def test_all_bad_files_trips_breaker(self, tmp_path):
+        """All 3 files corrupt → breaker must trip (consecutive errors > threshold)."""
+        covers = tmp_path / "covers"; covers.mkdir()
+        for i in range(3):
+            (covers / f"bad{i}.webp").write_bytes(b"not an image")
+
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run()
+        assert stats.breaker_tripped is True
+
+    def test_20pct_threshold_trips_on_large_batch(self, tmp_path):
+        """BUG-03: 4 errors out of 15 covers (>20%) must trip the breaker."""
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        for i in range(11):
+            shutil.copy(ASSETS / "cover.webp", covers / f"good{i}.webp")
+        for i in range(4):
+            (covers / f"bad{i}.webp").write_bytes(b"not an image")
+
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run()
+        assert stats.breaker_tripped is True
+
+    def test_on_progress_called_for_trip_item(self, tmp_path):
+        """BUG-04: on_progress must be called for the item that trips the breaker.
+        Previously the break happened before the on_progress call, leaving the
+        UI progress bar stuck on the last successfully-reported cover.
+        """
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        # 3 good + enough bad to trip (consecutive errors > 10 needs many, but
+        # total errors > max(3, ...) is enough here with 11 bad out of 14)
+        for i in range(3):
+            shutil.copy(ASSETS / "cover.webp", covers / f"good{i}.webp")
+        for i in range(11):
+            (covers / f"bad{i}.webp").write_bytes(b"not an image")
+
+        progress_calls: list[tuple[int, int, object]] = []
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run(
+            on_progress=lambda done, total, result: progress_calls.append(
+                (done, total, result)
+            )
+        )
+        assert stats.breaker_tripped is True
+        # on_progress must have been called for every item that completed,
+        # including the trip item (BUG-04 fix: call before break, not after).
+        # With workers=1 total_processed = succeeded + failed.
+        total_processed = stats.succeeded + stats.failed
+        assert len(progress_calls) == total_processed
+        # done values must be contiguous 1..N with no gap
+        reported_done = [c[0] for c in progress_calls]
+        assert reported_done == list(range(1, total_processed + 1))

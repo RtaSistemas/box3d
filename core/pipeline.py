@@ -201,7 +201,9 @@ class RenderPipeline:
 
         # --- Circuit Breaker state ---
         consecutive_errors = 0
-        error_threshold    = max(1, int(total * _CB_PCT_THRESHOLD))
+        # Minimum of 3 errors before the percentage branch activates, so a
+        # single bad file in a small batch (≤5 covers) doesn't abort the run.
+        error_threshold    = max(3, int(total * _CB_PCT_THRESHOLD))
         breaker_tripped    = False
 
         with ThreadPoolExecutor(max_workers=self.options.workers) as pool:
@@ -223,6 +225,11 @@ class RenderPipeline:
                 if result.status == "error" and result.error:
                     errors.append(f"{result.stem}: {result.error}")
 
+                # Notify caller BEFORE evaluating the circuit breaker so the
+                # item that causes the trip is still reported to the UI (BUG-04).
+                if on_progress is not None:
+                    on_progress(done, total, result)
+
                 # --- Circuit Breaker logic ---
                 if result.status == "error":
                     consecutive_errors += 1
@@ -242,9 +249,6 @@ class RenderPipeline:
                     log.critical("Cancelled %d pending task(s).", cancelled)
                     breaker_tripped = True
                     break
-
-                if on_progress is not None:
-                    on_progress(done, total, result)
 
         return RenderSummary(
             total=total,
