@@ -154,3 +154,37 @@ class TestRenderEndpoint:
         """Omitting required fields must return HTTP 422 (Pydantic validation)."""
         resp = client.post("/api/render", json={})
         assert resp.status_code == 422
+
+    def test_rgb_matrix_non_neutral_returns_started(self, tmp_path):
+        """rgb_matrix=[r,g,b] floats must be converted to the diagonal matrix
+        string internally; the request must return status=started without raising
+        AttributeError: 'tuple' object has no attribute 'split' in the worker.
+        Regression test for BUG-01.
+        """
+        covers = tmp_path / "covers"
+        covers.mkdir()
+        resp = client.post("/api/render", json={
+            "profile":    "mvs",
+            "covers_dir": str(covers),
+            "output_dir": str(tmp_path / "out"),
+            "workers":    1,
+            "dry_run":    True,
+            "rgb_matrix": [1.1, 1.0, 0.9],
+        })
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "started"
+
+    def test_rgb_matrix_neutral_returns_started(self, tmp_path):
+        """rgb_matrix=[1.0,1.0,1.0] (neutral tint) must be accepted without error."""
+        covers = tmp_path / "covers"
+        covers.mkdir()
+        resp = client.post("/api/render", json={
+            "profile":    "mvs",
+            "covers_dir": str(covers),
+            "output_dir": str(tmp_path / "out"),
+            "workers":    1,
+            "dry_run":    True,
+            "rgb_matrix": [1.0, 1.0, 1.0],
+        })
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "started"

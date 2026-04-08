@@ -91,9 +91,12 @@ def build_silhouette_mask(*alpha_sources: Image.Image) -> Image.Image:
     """
     Compute the union of the alpha channels of all *alpha_sources*.
     """
-    # getchannel("A") carrega apenas a banda Alpha, evitando alocar RGBA completo
+    # All callers (engine/compositor.py) guarantee RGBA inputs.
+    # Access the alpha channel directly without a redundant convert() allocation.
+    assert all(src.mode == "RGBA" for src in alpha_sources), \
+        "build_silhouette_mask: all sources must be RGBA"
     arrays = [
-        np.array(src.convert("RGBA").getchannel("A"), dtype=np.float32)
+        np.array(src.getchannel("A"), dtype=np.float32)
         for src in alpha_sources
     ]
     

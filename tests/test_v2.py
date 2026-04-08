@@ -476,6 +476,52 @@ class TestPipeline:
         # profiles/mvs/assets/ has no logo_game.* — runs fine with None
         assert stats.succeeded == 1
 
+    def test_no_logos_suppresses_game_logo(self, tmp_path):
+        """no_logos=True must prevent _load_game_logo() from being called.
+        Regression test for BUG-02: with_logos field was dead; no_logos had no effect.
+        """
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "marquees",
+            no_logos=True,
+        )
+        with patch.object(pipeline, "_load_game_logo") as mock_load:
+            stats = pipeline.run()
+        assert stats.succeeded == 1
+        mock_load.assert_not_called()  # no_logos=True must bypass game logo lookup
+
+    def test_no_logos_flag_absent_loads_game_logo(self, tmp_path):
+        """no_logos=False (default) must still attempt game logo resolution."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "marquees",
+            no_logos=False,
+        )
+        with patch.object(pipeline, "_load_game_logo", return_value=None) as mock_load:
+            stats = pipeline.run()
+        assert stats.succeeded == 1
+        mock_load.assert_called_once()  # must be called when no_logos=False
+
 
 # ===========================================================================
 # TASK-ENGINE-IO-PURGE-01 — engine/compositor.py
@@ -956,3 +1002,98 @@ class TestEngineAsserts:
             game_logo=None, top_logo=None, bottom_logo=None,
         )
         assert result.mode == "RGBA"
+
+
+# ===========================================================================
+# Circuit Breaker — BUG-03 + BUG-04 regression tests
+# ===========================================================================
+
+class TestCircuitBreaker:
+    """Regression tests for circuit breaker threshold and on_progress ordering."""
+
+    def _make_pipeline(self, tmp_path, covers_dir, no_logos=False):
+        from core.pipeline import RenderPipeline
+        reg = ProfileRegistry(PROFILES).load()
+        return RenderPipeline(
+            profile      = reg.get("mvs"),
+            covers_dir   = covers_dir,
+            output_dir   = tmp_path / "out",
+            options      = RenderOptions(workers=1),
+            logo_paths   = {},
+            marquees_dir = tmp_path / "m",
+            no_logos     = no_logos,
+        )
+
+    def test_single_bad_file_in_3_cover_batch_does_not_trip(self, tmp_path):
+        """BUG-03: 1 corrupt file out of 3 must NOT trip the circuit breaker.
+        Previously error_threshold=max(1, int(3*0.20))=1, so a single error
+        would abort the batch and skip the remaining 2 valid covers.
+        """
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "good1.webp")
+        shutil.copy(ASSETS / "cover.webp", covers / "good2.webp")
+        (covers / "bad.webp").write_bytes(b"not an image")  # corrupt
+
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run()
+        # 2 should succeed, 1 should fail, breaker must NOT trip
+        assert stats.succeeded == 2
+        assert stats.failed    == 1
+        assert stats.breaker_tripped is False
+
+    def test_all_bad_files_trips_breaker(self, tmp_path):
+        """All 5 files corrupt → total errors (5) > threshold (3) → breaker trips."""
+        # 5 bad files: error_threshold = max(3, int(5*0.20)) = 3.
+        # After 4 errors total_errors > 3 → breaker trips; 5th is cancelled.
+        covers = tmp_path / "covers"; covers.mkdir()
+        for i in range(5):
+            (covers / f"bad{i}.webp").write_bytes(b"not an image")
+
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run()
+        assert stats.breaker_tripped is True
+
+    def test_20pct_threshold_trips_on_large_batch(self, tmp_path):
+        """BUG-03: 4 errors out of 15 covers (>20%) must trip the breaker."""
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        for i in range(11):
+            shutil.copy(ASSETS / "cover.webp", covers / f"good{i}.webp")
+        for i in range(4):
+            (covers / f"bad{i}.webp").write_bytes(b"not an image")
+
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run()
+        assert stats.breaker_tripped is True
+
+    def test_on_progress_called_for_trip_item(self, tmp_path):
+        """BUG-04: on_progress must be called for the item that trips the breaker.
+        Previously the break happened before the on_progress call, leaving the
+        UI progress bar stuck on the last successfully-reported cover.
+        """
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        # 3 good + enough bad to trip (consecutive errors > 10 needs many, but
+        # total errors > max(3, ...) is enough here with 11 bad out of 14)
+        for i in range(3):
+            shutil.copy(ASSETS / "cover.webp", covers / f"good{i}.webp")
+        for i in range(11):
+            (covers / f"bad{i}.webp").write_bytes(b"not an image")
+
+        progress_calls: list[tuple[int, int, object]] = []
+        pipeline = self._make_pipeline(tmp_path, covers)
+        stats = pipeline.run(
+            on_progress=lambda done, total, result: progress_calls.append(
+                (done, total, result)
+            )
+        )
+        assert stats.breaker_tripped is True
+        # on_progress must have been called for every item that completed,
+        # including the trip item (BUG-04 fix: call before break, not after).
+        # With workers=1 total_processed = succeeded + failed.
+        total_processed = stats.succeeded + stats.failed
+        assert len(progress_calls) == total_processed
+        # done values must be contiguous 1..N with no gap
+        reported_done = [c[0] for c in progress_calls]
+        assert reported_done == list(range(1, total_processed + 1))

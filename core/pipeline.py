@@ -74,6 +74,7 @@ class RenderPipeline:
         options:      RenderOptions,
         logo_paths:   dict[str, Path | None] | None = None,
         marquees_dir: Path | None = None,
+        no_logos:     bool = False,
         temp_dir:     Path | None = None,   # legacy param — ignored; kept for API compat
     ) -> None:
         self.profile      = profile
@@ -82,6 +83,7 @@ class RenderPipeline:
         self.options      = options
         self.logo_paths   = logo_paths or {}
         self.marquees_dir = marquees_dir or (profile.root / "assets")
+        self.no_logos     = no_logos
         self._stats: dict[str, int] = {"ok": 0, "skip": 0, "error": 0, "dry": 0}
         self._lock  = Lock()
 
@@ -194,12 +196,14 @@ class RenderPipeline:
         template_img = _safe_open(self.profile.template_path)
 
         log.info("Pre-loading spine logos into memory...")
-        top_logo_img    = self._load_logo("top")
-        bottom_logo_img = self._load_logo("bottom")
+        top_logo_img    = None if self.no_logos else self._load_logo("top")
+        bottom_logo_img = None if self.no_logos else self._load_logo("bottom")
 
         # --- Circuit Breaker state ---
         consecutive_errors = 0
-        error_threshold    = max(1, int(total * _CB_PCT_THRESHOLD))
+        # Minimum of 3 errors before the percentage branch activates, so a
+        # single bad file in a small batch (≤5 covers) doesn't abort the run.
+        error_threshold    = max(3, int(total * _CB_PCT_THRESHOLD))
         breaker_tripped    = False
 
         with ThreadPoolExecutor(max_workers=self.options.workers) as pool:
@@ -221,6 +225,11 @@ class RenderPipeline:
                 if result.status == "error" and result.error:
                     errors.append(f"{result.stem}: {result.error}")
 
+                # Notify caller BEFORE evaluating the circuit breaker so the
+                # item that causes the trip is still reported to the UI (BUG-04).
+                if on_progress is not None:
+                    on_progress(done, total, result)
+
                 # --- Circuit Breaker logic ---
                 if result.status == "error":
                     consecutive_errors += 1
@@ -240,9 +249,6 @@ class RenderPipeline:
                     log.critical("Cancelled %d pending task(s).", cancelled)
                     breaker_tripped = True
                     break
-
-                if on_progress is not None:
-                    on_progress(done, total, result)
 
         return RenderSummary(
             total=total,
@@ -287,7 +293,7 @@ class RenderPipeline:
 
             # --- Disk read: cover + game logo (OOM Hardened) ---
             cover_img     = _safe_open(cover_path)
-            game_logo_img = self._load_game_logo(cover_path.stem)
+            game_logo_img = None if self.no_logos else self._load_game_logo(cover_path.stem)
 
             # --- Pure composition (zero I/O) ---
             result_img = compose_cover(
