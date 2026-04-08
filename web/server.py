@@ -205,22 +205,26 @@ async def start_render(
         )
 
     # --- RGB matrix ---
-    rgb_matrix: tuple[float, float, float] | None = None
+    # RenderOptions.rgb_matrix expects the diagonal matrix string consumed by
+    # engine/blending.apply_color_matrix() — e.g. "1.1 0 0  0 1.0 0  0 0 0.9".
+    # Payload sends [r, g, b] floats; convert here (same as cli/utils.parse_rgb_str).
+    rgb_matrix_str: str | None = None
     if payload.rgb_matrix and len(payload.rgb_matrix) == 3:
-        rgb_matrix = (payload.rgb_matrix[0], payload.rgb_matrix[1], payload.rgb_matrix[2])
+        r, g, b = payload.rgb_matrix
+        if r >= 0 and g >= 0 and b >= 0:
+            rgb_matrix_str = f"{r} 0 0  0 {g} 0  0 0 {b}"
 
     # --- Options ---
     options = RenderOptions(
         blur_radius   = payload.blur_radius,
         darken_alpha  = payload.darken_alpha,
-        rgb_matrix    = rgb_matrix,
+        rgb_matrix    = rgb_matrix_str,
         cover_fit     = payload.cover_fit,       # type: ignore[arg-type]
         spine_source  = payload.spine_source,    # type: ignore[arg-type]
         output_format = payload.output_format,   # type: ignore[arg-type]
         skip_existing = payload.skip_existing,
         workers       = payload.workers,
         dry_run       = payload.dry_run,
-        with_logos    = not payload.no_logos,
     )
 
     # --- Drain any stale events from a previous run ---
