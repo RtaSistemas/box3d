@@ -245,6 +245,7 @@ async def start_render(
             options      = options,
             logo_paths   = {"top": None, "bottom": None},
             marquees_dir = marquees_dir or (profile.root / "assets"),
+            no_logos     = payload.no_logos,
         )
 
         first_stem: str | None = None

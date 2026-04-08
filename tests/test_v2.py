@@ -476,6 +476,52 @@ class TestPipeline:
         # profiles/mvs/assets/ has no logo_game.* — runs fine with None
         assert stats.succeeded == 1
 
+    def test_no_logos_suppresses_game_logo(self, tmp_path):
+        """no_logos=True must prevent _load_game_logo() from being called.
+        Regression test for BUG-02: with_logos field was dead; no_logos had no effect.
+        """
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "marquees",
+            no_logos=True,
+        )
+        with patch.object(pipeline, "_load_game_logo") as mock_load:
+            stats = pipeline.run()
+        assert stats.succeeded == 1
+        mock_load.assert_not_called()  # no_logos=True must bypass game logo lookup
+
+    def test_no_logos_flag_absent_loads_game_logo(self, tmp_path):
+        """no_logos=False (default) must still attempt game logo resolution."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "marquees",
+            no_logos=False,
+        )
+        with patch.object(pipeline, "_load_game_logo", return_value=None) as mock_load:
+            stats = pipeline.run()
+        assert stats.succeeded == 1
+        mock_load.assert_called_once()  # must be called when no_logos=False
+
 
 # ===========================================================================
 # TASK-ENGINE-IO-PURGE-01 — engine/compositor.py
