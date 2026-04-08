@@ -1043,9 +1043,11 @@ class TestCircuitBreaker:
         assert stats.breaker_tripped is False
 
     def test_all_bad_files_trips_breaker(self, tmp_path):
-        """All 3 files corrupt → breaker must trip (consecutive errors > threshold)."""
+        """All 5 files corrupt → total errors (5) > threshold (3) → breaker trips."""
+        # 5 bad files: error_threshold = max(3, int(5*0.20)) = 3.
+        # After 4 errors total_errors > 3 → breaker trips; 5th is cancelled.
         covers = tmp_path / "covers"; covers.mkdir()
-        for i in range(3):
+        for i in range(5):
             (covers / f"bad{i}.webp").write_bytes(b"not an image")
 
         pipeline = self._make_pipeline(tmp_path, covers)
