@@ -1,5 +1,7 @@
 # Box3D Control Center — User Manual
 
+<img width="1918" height="912" alt="Control Center" src="https://github.com/user-attachments/assets/c1570fb6-1d3f-4b13-9956-07e74008b318" />
+
 > **Version:** 2.1.0
 > **Interface:** Browser (`http://127.0.0.1:8000`)
 > **Requires:** `pip install box3d[web]`
