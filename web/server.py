@@ -89,7 +89,7 @@ class RenderRequest(BaseModel):
     dry_run:       bool = Field(False)
     no_logos:      bool = Field(False)
     rgb_matrix:   list[float] | None = Field(
-        None, description="[r, g, b] channel scale factors (0.0–2.0)", min_length=3, max_length=3
+        None, description="[r, g, b] channel scale factors (0.0–5.0)", min_length=3, max_length=3
     )
 
 

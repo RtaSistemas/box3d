@@ -50,25 +50,34 @@ const rgbPicker       = $('opt-rgb-picker');
 const rgbLabel        = $('rgb-label');
 const btnResetRgb     = $('btn-reset-rgb');
 
+// ─── Live preview panel refs ─────────────────────────────────────────────────
+
+const livePreviewImg     = $('live-preview-img');
+const livePreviewIdle    = $('live-preview-idle');
+const previewProfileName = $('preview-profile-name');
+const previewProfileDims = $('preview-profile-dims');
+
 // ─── State ─────────────────────────────────────────────────────────────────
 
-let _rendering   = false;
-let _evtSource   = null;
-let _profilesMap = {};   // name → {template_w, template_h}
+let _rendering    = false;
+let _evtSource    = null;
+let _profilesMap  = {};   // name → {template_w, template_h}
+let _currentFormat = 'webp';
 
 // ─── RGB colour picker ──────────────────────────────────────────────────────
 
-/** Convert a CSS hex colour (#rrggbb) to normalised [r, g, b] floats (0–2 range). */
+/** Convert a CSS hex colour (#rrggbb) to normalised [r, g, b] floats (0–5 range).
+ *  white (#ffffff) → [5,5,5] (max);  neutral → [1,1,1] (#333333)  */
 function _hexToRgbMatrix(hex) {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
-  return [r * 2, g * 2, b * 2];   // scale: white (#ffffff) → [2,2,2]; neutral → [1,1,1] (#808080)
+  return [r * 5, g * 5, b * 5];
 }
 
-/** Return the closest hex colour for a normalised rgb_matrix [r,g,b] (0–2 range). */
+/** Return the closest hex colour for a normalised rgb_matrix [r,g,b] (0–5 range). */
 function _rgbMatrixToHex(matrix) {
-  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v / 2 * 255)));
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v / 5 * 255)));
   const r = clamp(matrix[0]).toString(16).padStart(2, '0');
   const g = clamp(matrix[1]).toString(16).padStart(2, '0');
   const b = clamp(matrix[2]).toString(16).padStart(2, '0');
@@ -80,7 +89,7 @@ function _updateRgbLabel() {
   rgbLabel.textContent = `${r.toFixed(2)}, ${g.toFixed(2)}, ${b.toFixed(2)}`;
 }
 
-/** Return null when the picker is at neutral (#808080 ≈ [1,1,1]) to avoid sending noise. */
+/** Return null when the picker is at neutral (#333333 ≈ [1,1,1]) to avoid sending noise. */
 function _getRgbMatrix() {
   const [r, g, b] = _hexToRgbMatrix(rgbPicker.value);
   const neutral = Math.abs(r - 1) < 0.02 && Math.abs(g - 1) < 0.02 && Math.abs(b - 1) < 0.02;
@@ -90,7 +99,7 @@ function _getRgbMatrix() {
 rgbPicker.addEventListener('input', _updateRgbLabel);
 
 btnResetRgb.addEventListener('click', () => {
-  rgbPicker.value = '#808080';   // neutral: scale factors → [1, 1, 1]
+  rgbPicker.value = '#333333';   // neutral: scale factors → [1, 1, 1]
   _updateRgbLabel();
 });
 
@@ -210,9 +219,13 @@ async function fetchProfiles() {
 function _onProfileChange() {
   const name = profileSelect.value;
   const p    = _profilesMap[name];
-  profileInfo.textContent = p
-    ? `${p.template_w} × ${p.template_h} px`
-    : '';
+  const dims = p ? `${p.template_w} × ${p.template_h} px` : '';
+
+  profileInfo.textContent = dims;
+
+  // Update live preview panel profile info
+  if (previewProfileName) previewProfileName.textContent = name || '—';
+  if (previewProfileDims) previewProfileDims.textContent  = dims;
 }
 
 // ─── Render ─────────────────────────────────────────────────────────────────
@@ -244,6 +257,7 @@ async function startRender() {
   _showProgressPanel();
 
   const payload = _buildPayload();
+  _currentFormat = payload.output_format;
 
   // ── POST /api/render ────────────────────────────────────────────
   let startResp;
@@ -303,6 +317,11 @@ async function startRender() {
 
     _appendLog(`${icon}  ${data.stem}${elapsed}`);
     _setProgress(data.done, data.total);
+
+    // ── Live preview: update sidebar on every successful render ──
+    if (data.status === 'ok' && data.stem) {
+      _updateLivePreview(data.stem, _currentFormat);
+    }
   };
 
   _evtSource.onerror = () => {
@@ -313,6 +332,22 @@ async function startRender() {
       _setRendering(false);
     }
   };
+}
+
+// ─── Live preview helpers ─────────────────────────────────────────────────────
+
+/**
+ * Update the live preview sidebar with the last successfully rendered image.
+ * Appends a timestamp query param to bust the browser cache on re-renders.
+ * #18: Without the cache-buster, the browser serves its cached copy when
+ *      the same filename is rendered a second time.
+ */
+function _updateLivePreview(stem, fmt) {
+  if (!livePreviewImg) return;
+  livePreviewImg.src = `/api/preview/${encodeURIComponent(stem)}.${fmt}?t=${Date.now()}`;
+  livePreviewImg.alt = stem;
+  livePreviewImg.classList.remove('hidden');
+  if (livePreviewIdle) livePreviewIdle.classList.add('hidden');
 }
 
 // ─── Progress helpers ────────────────────────────────────────────────────────
@@ -374,11 +409,11 @@ function _showSummary(data) {
   modalTitle.textContent = hasFails ? 'Render Finished With Errors' : 'Render Complete';
   modalTitle.className   = hasFails ? 'modal-title failed' : 'modal-title';
 
-  // ── Preview image ───────────────────────────────────────────────
+  // ── Preview image — cache-buster prevents stale image on re-renders (#18) ──
   const fmt  = data.output_format || 'webp';
   const stem = data.first_stem;
   if (stem && data.succeeded > 0) {
-    previewImg.src = `/api/preview/${encodeURIComponent(stem)}.${fmt}`;
+    previewImg.src = `/api/preview/${encodeURIComponent(stem)}.${fmt}?t=${Date.now()}`;
     previewImg.alt = stem;
     summaryPreview.classList.remove('hidden');
   } else {
@@ -454,5 +489,5 @@ summaryOverlay.addEventListener('click', (e) => {
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
 
-_updateRgbLabel();   // initialise label from picker default (#808080 → neutral)
+_updateRgbLabel();   // initialise label from picker default (#333333 → neutral)
 fetchProfiles();
