@@ -81,6 +81,10 @@ pip install -e .            # Pillow + NumPy only — full CLI
 
 ### With web Control Center
 
+<img width="1918" height="912" alt="Control Center" src="https://github.com/user-attachments/assets/b166634a-9532-4d87-bf92-008f9a301eda" />
+
+<img width="520" height="638" alt="result" src="https://github.com/user-attachments/assets/bb01f8db-8907-4153-a645-ea2a9c97a249" />
+
 ```bash
 pip install -e ".[web]"     # adds FastAPI + Uvicorn + httpx
 ```
@@ -237,6 +241,7 @@ box3d serve --host 0.0.0.0 --port 9000  # expose on LAN
 ### `designer`
 
 Opens Box3D Designer Pro in the default browser.
+<img width="1918" height="860" alt="designer" src="https://github.com/user-attachments/assets/2ccc36bf-9b48-4e8a-9085-26a8599f9b07" />
 
 ```bash
 box3d designer
