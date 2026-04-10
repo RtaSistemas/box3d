@@ -25,8 +25,9 @@
   --font-ui:    'Exo 2', sans-serif;
 
   /* Layout */
-  --header-h:  52px;
-  --sidebar-w: 420px;
+  --header-h:   52px;
+  --sidebar-w:  420px;
+  --preview-w:  300px;
 }
 
 html, body {
@@ -81,7 +82,7 @@ html, body {
 
 #main {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) 1fr var(--preview-w);
   overflow: hidden;
 }
 
@@ -570,6 +571,45 @@ html, body {
   gap: .5rem;
   justify-content: flex-end;
   margin-top: .5rem;
+}
+
+/* ── Live preview sidebar (#20) ──────────────────────────────────── */
+
+#preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  padding: 1rem;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.preview-profile-name {
+  font-family: var(--font-mono);
+  font-size: .9rem;
+  color: var(--accent);
+  letter-spacing: .06em;
+  margin-bottom: .1rem;
+}
+
+.live-preview-idle {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: .75rem;
+  line-height: 1.8;
+  padding: 1.5rem .5rem;
+}
+
+#live-preview-img {
+  width: 100%;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  object-fit: contain;
+  background: var(--bg);
+  display: block;
 }
 
 /* ── Utilities ───────────────────────────────────────────────────── */

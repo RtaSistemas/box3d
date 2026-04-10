@@ -126,7 +126,7 @@
           <div class="field field-color">
             <label for="opt-rgb-picker">Spine RGB tint</label>
             <div class="color-input-group">
-              <input id="opt-rgb-picker" type="color" value="#ffffff" title="Spine tint colour">
+              <input id="opt-rgb-picker" type="color" value="#333333" title="Spine tint colour">
               <span id="rgb-label" class="rgb-label">1.00, 1.00, 1.00</span>
               <button id="btn-reset-rgb" class="btn-ghost" title="Reset to neutral">↺</button>
             </div>
@@ -156,7 +156,7 @@
 
     </aside>
 
-    <!-- RIGHT — Progress & log -->
+    <!-- CENTRE — Progress & log -->
     <section id="progress-panel">
 
       <div class="card" id="card-idle">
@@ -185,6 +185,29 @@
       </div>
 
     </section>
+
+    <!-- RIGHT — Live preview sidebar (#20) -->
+    <aside id="preview-panel">
+
+      <!-- Active profile info -->
+      <div class="card">
+        <div class="card-title">▸ Active Profile</div>
+        <div id="preview-profile-name" class="preview-profile-name">—</div>
+        <div id="preview-profile-dims" class="info-row"></div>
+      </div>
+
+      <!-- Live preview — updates as each image renders -->
+      <div class="card" id="card-live-preview">
+        <div class="card-title">▸ Last Render</div>
+        <div id="live-preview-wrap">
+          <div id="live-preview-idle" class="live-preview-idle">
+            No image rendered yet.<br>Start a render to see a preview here.
+          </div>
+          <img id="live-preview-img" src="" alt="Live preview" class="hidden">
+        </div>
+      </div>
+
+    </aside>
 
   </div><!-- /main -->
 
