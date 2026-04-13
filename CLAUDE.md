@@ -174,7 +174,7 @@ box3d render --profile <name>
   --darken <f>            Spine darkness multiplier 0.0–1.0 (default: 0.55)
   --rgb <R,G,B>           RGB channel scaling (default: 1.0,1.0,1.0)
   --cover-fit <mode>      stretch | fit | crop (default: stretch)
-  --spine-source <mode>   auto | cover | marquee
+  --spine-source <mode>   left | right | center  (cover edge used as spine background)
   --output-format <fmt>   webp | png (default: webp)
   --skip-existing         Skip already-rendered files
   --dry-run               Validate inputs without rendering
