@@ -62,9 +62,13 @@ jobs:
             # PyInstaller appends .exe automatically on Windows.
             build_name: box3d-windows-x64
             artifact_path: dist/box3d-windows-x64.exe
+            gui_build_name: box3d-gui-windows-x64
+            gui_artifact_path: dist/box3d-gui-windows-x64.exe
           - os: ubuntu-latest
             build_name: box3d-linux-x64
             artifact_path: dist/box3d-linux-x64
+            gui_build_name: box3d-gui-linux-x64
+            gui_artifact_path: dist/box3d-gui-linux-x64
 
     steps:
       - name: Checkout repository
@@ -79,10 +83,10 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install runtime dependencies, web extra, and PyInstaller
-        # Install the full package including the optional [web] extra so that
-        # FastAPI + Uvicorn are bundled into the standalone executable.
-        run: python -m pip install pyinstaller ".[web]"
+      - name: Install runtime dependencies, web + gui extras, and PyInstaller
+        # Install the full package including [web] and [gui] extras so that
+        # FastAPI + Uvicorn and CustomTkinter are available for bundling.
+        run: python -m pip install pyinstaller ".[web,gui]"
 
       - name: Build standalone executable (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -132,7 +136,37 @@ jobs:
             --hidden-import fastapi `
             cli/main.py
 
-      - name: Upload asset to GitHub Release
+      - name: Build GUI executable (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          pyinstaller \
+            --onefile \
+            --strip \
+            --name ${{ matrix.gui_build_name }} \
+            --add-data "profiles:profiles" \
+            --collect-all customtkinter \
+            --hidden-import tkinter \
+            --hidden-import _tkinter \
+            gui/app.py
+
+      - name: Build GUI executable (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller `
+            --onefile `
+            --name ${{ matrix.gui_build_name }} `
+            --add-data "profiles;profiles" `
+            --collect-all customtkinter `
+            --hidden-import tkinter `
+            --hidden-import _tkinter `
+            gui/app.py
+
+      - name: Upload CLI asset to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact_path }}
+
+      - name: Upload GUI asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.gui_artifact_path }}
