@@ -83,7 +83,11 @@ class RenderRequest(BaseModel):
     blur_radius:  int  = Field(20,   ge=0, description="Spine background blur radius")
     darken_alpha: int  = Field(180,  ge=0, le=255, description="Spine dark overlay alpha")
     cover_fit:    str | None = Field(None, description="stretch | fit | crop")
-    spine_source: str | None = Field(None, description="auto | cover | marquee")
+    spine_source: str | None = Field(
+        None,
+        description="Spine background sample position: left | right | center (None = profile default)",
+        pattern=r"^(left|right|center)$",
+    )
     output_format: str = Field("webp", description="webp | png")
     skip_existing: bool = Field(False)
     dry_run:       bool = Field(False)
@@ -219,9 +223,9 @@ async def start_render(
         blur_radius   = payload.blur_radius,
         darken_alpha  = payload.darken_alpha,
         rgb_matrix    = rgb_matrix_str,
-        cover_fit     = payload.cover_fit,       # type: ignore[arg-type]
-        spine_source  = payload.spine_source,    # type: ignore[arg-type]
-        output_format = payload.output_format,   # type: ignore[arg-type]
+        cover_fit     = payload.cover_fit,    # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
+        spine_source  = payload.spine_source, # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
+        output_format = payload.output_format,# type: ignore[arg-type]  (Literal validated by Pydantic enum)
         skip_existing = payload.skip_existing,
         workers       = payload.workers,
         dry_run       = payload.dry_run,

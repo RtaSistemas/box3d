@@ -85,6 +85,15 @@ def build_spine(
     src_w  = max(10, int(cw * geom.spine_source_frac))
     source = geom.spine_source
 
+    _VALID_SOURCES = {"left", "right", "center"}
+    if source not in _VALID_SOURCES:
+        log.warning(
+            "build_spine: invalid spine_source %r — must be one of %s. "
+            "Falling back to 'center'.",
+            source, sorted(_VALID_SOURCES),
+        )
+        source = "center"
+
     if source == "left":
         region = (0, 0, src_w, ch)
     elif source == "right":
