@@ -60,6 +60,7 @@ class ControlTab:
 
         # Runtime state
         self._rendering        = False
+        self._cancel_event     = threading.Event()
         self._queue: queue.Queue[dict] = queue.Queue()
         self._profiles_map:   dict    = {}
         self._current_format  = "webp"
@@ -412,8 +413,8 @@ class ControlTab:
     # Profiles
     # =========================================================================
 
-    def _load_profiles(self) -> None:
-        prev = self._profile_var.get()
+    def _load_profiles(self, select: str | None = None) -> None:
+        prev = select or self._profile_var.get()
         if hasattr(self, "_btn_reload"):
             self._btn_reload.configure(text="↻…", state="disabled")
         try:
@@ -436,6 +437,10 @@ class ControlTab:
                     500,
                     lambda: self._btn_reload.configure(text="↻", state="normal"),
                 )
+
+    def reload_profiles(self, select: str | None = None) -> None:
+        """Public: reload profile list, optionally pre-selecting *select*."""
+        self._load_profiles(select=select)
 
     def _on_profile_change(self, name: str) -> None:
         p    = self._profiles_map.get(name)
@@ -573,10 +578,12 @@ class ControlTab:
         self._rendering       = True
         self._current_format  = self._format_var.get()
         self._last_output_dir = output_dir
+        self._cancel_event.clear()
 
         self._btn_render.configure(
-            state="disabled", text="⏳  RENDERING…",
-            border_color=_WARN, text_color=_WARN,
+            state="normal", text="⏹  CANCEL",
+            border_color=_ERROR, text_color=_ERROR,
+            command=self._cancel_render,
         )
         self._on_status("● RENDERING", _WARN)
         self._progress_bar.set(0)
@@ -603,9 +610,14 @@ class ControlTab:
         from core.models import CoverResult
 
         first_stem: str | None = None
+        _done: int = 0
+        _total: int = 0
 
         def on_progress(done: int, total: int, result: CoverResult) -> None:
-            nonlocal first_stem
+            nonlocal first_stem, _done, _total
+            _done, _total = done, total
+            if self._cancel_event.is_set():
+                raise InterruptedError("Render cancelado pelo usuário.")
             if result.status == "ok" and first_stem is None:
                 first_stem = result.stem
             self._queue.put({
@@ -628,6 +640,9 @@ class ControlTab:
                 no_logos     = no_logos,
             )
             report = pipeline.run(on_progress=on_progress)
+        except InterruptedError:
+            self._queue.put({"type": "cancelled", "done": _done, "total": _total})
+            return
         except Exception as exc:
             self._queue.put({"type": "fatal", "message": str(exc)})
             return
@@ -644,6 +659,11 @@ class ControlTab:
             "errors":          report.errors,
             "first_stem":      first_stem,
         })
+
+    def _cancel_render(self) -> None:
+        self._cancel_event.set()
+        self._btn_render.configure(state="disabled", text="⏹  CANCELLING…")
+        self._on_status("● CANCELLING…", _WARN)
 
     def _poll_queue(self) -> None:
         try:
@@ -674,6 +694,7 @@ class ControlTab:
             self._btn_render.configure(
                 state="normal", text="▶  START RENDER",
                 border_color=_ACCENT, text_color=_ACCENT,
+                command=self._start_render,
             )
             ok = event["failed"] == 0 and not event["breaker_tripped"]
             self._on_status(
@@ -690,11 +711,23 @@ class ControlTab:
                 self._log("⚡ Circuit breaker tripped — batch aborted.")
             self._show_summary(event)
 
+        elif etype == "cancelled":
+            self._rendering = False
+            self._btn_render.configure(
+                state="normal", text="▶  START RENDER",
+                border_color=_ACCENT, text_color=_ACCENT,
+                command=self._start_render,
+            )
+            self._on_status("● CANCELLED", _WARN)
+            self._log("─" * 52)
+            self._log(f"⏹  Render cancelado após {event['done']}/{event['total']} covers.")
+
         elif etype == "fatal":
             self._rendering = False
             self._btn_render.configure(
                 state="normal", text="▶  START RENDER",
                 border_color=_ACCENT, text_color=_ACCENT,
+                command=self._start_render,
             )
             self._on_status("● ERROR", _ERROR)
             self._log(f"✘  Fatal error: {event['message']}")
@@ -773,8 +806,9 @@ class ControlTab:
                 var.set(bool(v))
 
     def save_config(self) -> None:
-        """Persist the current GUI state to disk (called on window close)."""
-        _save_config_file({
+        """Merge Control settings into the shared config file (preserves Designer keys)."""
+        cfg = load_config()
+        cfg.update({
             "last_profile":  self._profile_var.get(),
             "covers_dir":    self._covers_var.get(),
             "output_dir":    self._output_var.get(),
@@ -792,6 +826,7 @@ class ControlTab:
             "dry_run":       self._dry_var.get(),
             "no_logos":      self._no_logos_var.get(),
         })
+        _save_config_file(cfg)
 
     # =========================================================================
     # Summary dialog
