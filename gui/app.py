@@ -114,8 +114,8 @@ class App(ctk.CTk):
         tabs.add("Designer")
 
         self._tabs = tabs
-        self._control_tab = ControlTab(tabs.tab("Control"), on_status_change=self._update_status)
-        DesignerTab(tabs.tab("Designer"), on_install_cb=self.reload_and_select_profile)
+        self._control_tab  = ControlTab(tabs.tab("Control"), on_status_change=self._update_status)
+        self._designer_tab = DesignerTab(tabs.tab("Designer"), on_install_cb=self.reload_and_select_profile)
 
     # =========================================================================
     # Status callback (used by ControlTab)
@@ -131,6 +131,7 @@ class App(ctk.CTk):
 
     def _on_close(self) -> None:
         self._control_tab.save_config()
+        self._designer_tab.save_config()
         self.destroy()
 
 

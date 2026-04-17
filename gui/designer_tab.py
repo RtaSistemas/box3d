@@ -39,6 +39,7 @@ class DesignerTab:
         self._updating_ui  = False
         self._template_path: Path | None    = None
         self._on_install   = on_install_cb or (lambda name: None)
+        self._canvas_bg_var: ctk.StringVar  = ctk.StringVar(value=_PANEL2)
 
         # 3-column layout: left | canvas | right
         parent.grid_columnconfigure(0, weight=0, minsize=235)
@@ -49,6 +50,7 @@ class DesignerTab:
         self._build_left_panel(parent)
         self._build_canvas(parent)
         self._build_right_panel(parent)
+        parent.after(200, self._restore_config)
 
     # =========================================================================
     # Left panel
@@ -231,6 +233,35 @@ class DesignerTab:
         ).grid(row=0, column=1, sticky="w")
         self._grid_size_var.trace_add("write", self._apply_grid_size)
 
+        # ── Canvas background color ───────────────────────────────────────────
+        r = self._heading(left, "▸ CANVAS BG", r)
+
+        bg_row = ctk.CTkFrame(left, fg_color="transparent")
+        bg_row.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
+        bg_row.grid_columnconfigure(1, weight=1)
+        r += 1
+
+        self._bg_swatch = ctk.CTkButton(
+            bg_row, text="", width=28, height=28, corner_radius=4,
+            fg_color=_PANEL2, hover_color=_PANEL2,
+            command=self._pick_canvas_bg,
+        )
+        self._bg_swatch.grid(row=0, column=0, padx=(0, 8))
+
+        ctk.CTkLabel(
+            bg_row, text="Background",
+            font=ctk.CTkFont(size=10), text_color=_DIM,
+        ).grid(row=0, column=1, sticky="w")
+
+        ctk.CTkButton(
+            bg_row, text="◉ Pick",
+            height=28, corner_radius=4,
+            fg_color="transparent", border_color=_BORDER, border_width=1,
+            text_color=_DIM, hover_color=_PANEL2,
+            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            command=self._pick_canvas_bg,
+        ).grid(row=0, column=2, padx=(8, 0))
+
         # ── Zoom ──────────────────────────────────────────────────────────────
         r = self._heading(left, "▸ ZOOM", r)
 
@@ -262,12 +293,15 @@ class DesignerTab:
     # =========================================================================
 
     def _build_canvas(self, parent: ctk.CTkFrame) -> None:
-        cframe = ctk.CTkFrame(parent, fg_color=_PANEL, corner_radius=0)
+        cframe = ctk.CTkFrame(parent, fg_color=_PANEL2, corner_radius=0)
         cframe.grid(row=0, column=1, sticky="nsew")
         cframe.grid_columnconfigure(0, weight=1)
         cframe.grid_rowconfigure(0, weight=1)
 
-        self._canvas = tk.Canvas(cframe, bg=_PANEL, highlightthickness=0, bd=0, cursor="crosshair")
+        self._canvas = tk.Canvas(
+            cframe, bg=self._canvas_bg_var.get(),
+            highlightthickness=0, bd=0, cursor="crosshair",
+        )
         self._canvas.grid(row=0, column=0, sticky="nsew")
 
         self._engine = DesignerEngine(
@@ -693,6 +727,79 @@ class DesignerTab:
             "spine_layout":      sl,
             "description":       self._desc_var.get().strip(),
         }
+
+    # =========================================================================
+    # Canvas background color
+    # =========================================================================
+
+    def _pick_canvas_bg(self) -> None:
+        from tkinter import colorchooser
+        result = colorchooser.askcolor(
+            color=self._canvas_bg_var.get(),
+            title="Canvas Background Color",
+        )
+        if result and result[1]:
+            self._apply_canvas_bg(result[1])
+
+    def _apply_canvas_bg(self, color: str) -> None:
+        try:
+            self._canvas_bg_var.set(color)
+            self._canvas.configure(bg=color)
+            if self._engine:
+                self._engine.redraw()
+            if hasattr(self, "_bg_swatch"):
+                self._bg_swatch.configure(fg_color=color, hover_color=color)
+        except Exception:
+            pass
+
+    # =========================================================================
+    # Config persistence (issue #27 — Designer side)
+    # =========================================================================
+
+    def _restore_config(self) -> None:
+        from gui.config import load_config
+        cfg = load_config()
+        if not cfg:
+            return
+        if color := cfg.get("dsn_canvas_bg"):
+            self._apply_canvas_bg(color)
+        for key, var in [
+            ("dsn_spine_source", self._spine_src_var),
+            ("dsn_cover_fit",    self._cover_fit_var),
+            ("dsn_spine_frac",   self._spine_frac_var),
+            ("dsn_grid_size",    self._grid_size_var),
+            ("dsn_name",         self._name_var),
+            ("dsn_desc",         self._desc_var),
+        ]:
+            if (v := cfg.get(key)) is not None:
+                var.set(str(v))
+        if (v := cfg.get("dsn_show_grid")) is not None:
+            self._show_grid_var.set(bool(v))
+            self._toggle_grid()
+        if (v := cfg.get("dsn_snap")) is not None:
+            self._snap_var.set(bool(v))
+            self._toggle_snap()
+
+    def save_config(self) -> None:
+        """Merge Designer settings into the shared config file."""
+        from gui.config import load_config, save_config as _write
+        cfg = load_config()
+        cfg.update({
+            "dsn_canvas_bg":    self._canvas_bg_var.get(),
+            "dsn_spine_source": self._spine_src_var.get(),
+            "dsn_cover_fit":    self._cover_fit_var.get(),
+            "dsn_spine_frac":   self._spine_frac_var.get(),
+            "dsn_show_grid":    self._show_grid_var.get(),
+            "dsn_snap":         self._snap_var.get(),
+            "dsn_grid_size":    self._grid_size_var.get(),
+            "dsn_name":         self._name_var.get(),
+            "dsn_desc":         self._desc_var.get(),
+        })
+        _write(cfg)
+
+    # =========================================================================
+    # Profile install (issue #33)
+    # =========================================================================
 
     def _install_profile(self) -> None:
         """Install the current profile into profiles/ and reload the Control tab."""

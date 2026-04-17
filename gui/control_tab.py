@@ -806,8 +806,9 @@ class ControlTab:
                 var.set(bool(v))
 
     def save_config(self) -> None:
-        """Persist the current GUI state to disk (called on window close)."""
-        _save_config_file({
+        """Merge Control settings into the shared config file (preserves Designer keys)."""
+        cfg = load_config()
+        cfg.update({
             "last_profile":  self._profile_var.get(),
             "covers_dir":    self._covers_var.get(),
             "output_dir":    self._output_var.get(),
@@ -825,6 +826,7 @@ class ControlTab:
             "dry_run":       self._dry_var.get(),
             "no_logos":      self._no_logos_var.get(),
         })
+        _save_config_file(cfg)
 
     # =========================================================================
     # Summary dialog
