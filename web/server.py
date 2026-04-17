@@ -45,6 +45,15 @@ from cli.bootstrap import _BUNDLE, _PROFILES
 from core.models import CoverResult, RenderOptions
 from core.registry import ProfileRegistry, ProfileError
 
+
+def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
+    """Return the first matching logo file (.png or .webp), or None."""
+    for ext in (".png", ".webp"):
+        p = assets_dir / f"{stem}{ext}"
+        if p.exists():
+            return p
+    return None
+
 app = FastAPI(
     title="Box3D Web Control Center",
     description="HTTP API for the Box3D 3D box-art rendering engine.",
@@ -247,7 +256,10 @@ async def start_render(
             covers_dir   = covers_dir,
             output_dir   = output_dir,
             options      = options,
-            logo_paths   = {"top": None, "bottom": None},
+            logo_paths   = {
+                "top":    _auto_logo(profile.root / "assets", "logo_top"),
+                "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
+            },
             marquees_dir = marquees_dir or (profile.root / "assets"),
             no_logos     = payload.no_logos,
         )

@@ -37,6 +37,15 @@ from .constants import (                             # noqa: E402
 )
 
 
+def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
+    """Return the first matching logo file (.png or .webp), or None."""
+    for ext in (".png", ".webp"):
+        p = assets_dir / f"{stem}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
 class ControlTab:
     """Control Center tab — builds its UI inside the given *parent* frame."""
 
@@ -586,7 +595,10 @@ class ControlTab:
                 covers_dir   = covers_dir,
                 output_dir   = output_dir,
                 options      = options,
-                logo_paths   = {"top": None, "bottom": None},
+                logo_paths   = {
+                    "top":    _auto_logo(profile.root / "assets", "logo_top"),
+                    "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
+                },
                 marquees_dir = marquees_dir or (profile.root / "assets"),
                 no_logos     = no_logos,
             )
