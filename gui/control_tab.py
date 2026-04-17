@@ -30,6 +30,7 @@ from core.models import RenderOptions                # noqa: E402
 from core.pipeline import RenderPipeline             # noqa: E402
 from core.registry import ProfileRegistry            # noqa: E402
 
+from .config import load_config, save_config as _save_config_file  # noqa: E402
 from .constants import (                             # noqa: E402
     _BG, _PANEL, _PANEL2, _BORDER,
     _ACCENT, _ACCENT2, _WARN, _OK, _ERROR, _TEXT, _DIM,
@@ -75,6 +76,7 @@ class ControlTab:
         self._build_progress_panel(parent)
         self._build_preview_panel(parent)
         self._load_profiles()
+        self._restore_config()
 
     # =========================================================================
     # UI construction
@@ -93,8 +95,13 @@ class ControlTab:
         r = self._heading(self._cfg, "▸ PROFILE", r)
 
         self._profile_var = ctk.StringVar(value="Loading…")
+        profile_row = ctk.CTkFrame(self._cfg, fg_color="transparent")
+        profile_row.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 4))
+        profile_row.grid_columnconfigure(0, weight=1)
+        r += 1
+
         self._profile_combo = ctk.CTkComboBox(
-            self._cfg,
+            profile_row,
             variable=self._profile_var,
             values=[],
             command=self._on_profile_change,
@@ -103,8 +110,16 @@ class ControlTab:
             text_color=_TEXT, dropdown_fg_color=_PANEL2,
             font=ctk.CTkFont(family=_FONT_MONO, size=12),
         )
-        self._profile_combo.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 4))
-        r += 1
+        self._profile_combo.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self._btn_reload = ctk.CTkButton(
+            profile_row, text="↻", width=32, height=28,
+            fg_color="transparent", border_color=_BORDER, border_width=1,
+            text_color=_DIM, hover_color=_PANEL2,
+            font=ctk.CTkFont(family=_FONT_MONO, size=13),
+            command=self._load_profiles,
+        )
+        self._btn_reload.grid(row=0, column=1)
 
         self._profile_info_lbl = ctk.CTkLabel(
             self._cfg, text="",
@@ -398,19 +413,29 @@ class ControlTab:
     # =========================================================================
 
     def _load_profiles(self) -> None:
+        prev = self._profile_var.get()
+        if hasattr(self, "_btn_reload"):
+            self._btn_reload.configure(text="↻…", state="disabled")
         try:
             registry = ProfileRegistry(str(_PROFILES)).load()
             names    = registry.names()
             self._profiles_map = {n: registry.get(n) for n in names}
             self._profile_combo.configure(values=names)
             if names:
-                self._profile_var.set(names[0])
-                self._on_profile_change(names[0])
+                target = prev if prev in names else names[0]
+                self._profile_var.set(target)
+                self._on_profile_change(target)
             else:
                 self._profile_var.set("No profiles found")
         except Exception as exc:
             self._log(f"⚠  Could not load profiles: {exc}")
             self._profile_var.set("Error loading profiles")
+        finally:
+            if hasattr(self, "_btn_reload"):
+                self._parent.after(
+                    500,
+                    lambda: self._btn_reload.configure(text="↻", state="normal"),
+                )
 
     def _on_profile_change(self, name: str) -> None:
         p    = self._profiles_map.get(name)
@@ -700,6 +725,73 @@ class ControlTab:
                 self._prev_stem_lbl.configure(text=stem)
         except Exception:
             pass
+
+    # =========================================================================
+    # Config persistence (issue #27)
+    # =========================================================================
+
+    def _restore_config(self) -> None:
+        """Restore GUI state from the last saved session."""
+        cfg = load_config()
+        if not cfg:
+            return
+
+        last = cfg.get("last_profile", "")
+        if last and last in self._profiles_map:
+            self._profile_var.set(last)
+            self._on_profile_change(last)
+
+        for key, var in [
+            ("covers_dir",   self._covers_var),
+            ("output_dir",   self._output_var),
+            ("marquees_dir", self._marquees_var),
+            ("workers",      self._workers_var),
+            ("blur",         self._blur_var),
+            ("darken",       self._darken_var),
+            ("cover_fit",    self._cover_fit_var),
+            ("spine_source", self._spine_source_var),
+            ("output_format", self._format_var),
+        ]:
+            if (v := cfg.get(key)) is not None:
+                var.set(str(v))
+
+        for key, var, label in [
+            ("rgb_r", self._rgb_r, "R"),
+            ("rgb_g", self._rgb_g, "G"),
+            ("rgb_b", self._rgb_b, "B"),
+        ]:
+            if (v := cfg.get(key)) is not None:
+                var.set(float(v))
+                self._rgb_value_labels[label].configure(text=f"{float(v):.2f}")
+
+        for key, var in [
+            ("skip_existing", self._skip_var),
+            ("dry_run",       self._dry_var),
+            ("no_logos",      self._no_logos_var),
+        ]:
+            if (v := cfg.get(key)) is not None:
+                var.set(bool(v))
+
+    def save_config(self) -> None:
+        """Persist the current GUI state to disk (called on window close)."""
+        _save_config_file({
+            "last_profile":  self._profile_var.get(),
+            "covers_dir":    self._covers_var.get(),
+            "output_dir":    self._output_var.get(),
+            "marquees_dir":  self._marquees_var.get(),
+            "workers":       self._workers_var.get(),
+            "blur":          self._blur_var.get(),
+            "darken":        self._darken_var.get(),
+            "cover_fit":     self._cover_fit_var.get(),
+            "spine_source":  self._spine_source_var.get(),
+            "output_format": self._format_var.get(),
+            "rgb_r":         self._rgb_r.get(),
+            "rgb_g":         self._rgb_g.get(),
+            "rgb_b":         self._rgb_b.get(),
+            "skip_existing": self._skip_var.get(),
+            "dry_run":       self._dry_var.get(),
+            "no_logos":      self._no_logos_var.get(),
+        })
 
     # =========================================================================
     # Summary dialog

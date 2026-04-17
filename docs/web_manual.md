@@ -10,12 +10,13 @@
 
 ## Overview
 
-Box3D ships with two interfaces that use the same rendering engine:
+Box3D ships with three interfaces that use the same rendering engine:
 
 | Interface | Best for | Requirements |
 |---|---|---|
 | **CLI** (`box3d render`) | Automation, scripts, batch jobs | Pillow + NumPy only |
-| **Control Center** (this doc) | Interactive use, first-time users | `pip install .[web]` |
+| **Control Center** (this doc) | Browser-based interactive use | `pip install .[web]` |
+| **Desktop GUI** (`box3d-gui`) | Native desktop, includes Designer tab | `pip install .[gui]` |
 
 Both produce identical output. The Control Center is a visual layer on top of the same `RenderPipeline`.
 
@@ -149,9 +150,10 @@ Which edge of the cover image is sampled to create the spine background strip:
 
 | Value | Behaviour |
 |---|---|
-| `auto` | Profile default (usually `left`) |
-| `cover` | Samples the left edge of the cover |
-| `marquee` | Uses the marquee image as the spine source (if available) |
+| (blank) | Profile default (usually `left`) |
+| `left` | Samples the left edge of the cover |
+| `right` | Samples the right edge of the cover |
+| `center` | Samples the centre strip of the cover |
 
 #### Output Format
 
@@ -250,12 +252,15 @@ The **▶ START RENDER** button enables only when both required paths show green
 
 ### Circuit Breaker tripped
 
-The pipeline aborted because too many consecutive covers failed.
+The pipeline aborted because the error rate exceeded the safety thresholds:
+- **10 consecutive failures**, OR
+- **> 20 % of processed covers** failed (minimum 3 errors before this branch activates)
 
 **Common causes:**
 - Corrupt or truncated images in the covers directory
 - Extreme resolutions rejected by the OOM guard (> 8 192 px)
 - Insufficient disk space in the output directory
+- Wrong covers directory (contains non-image files)
 
 **Fix:**
 1. Review the error list in the summary modal.

@@ -134,8 +134,9 @@ This preserves the cover wherever it was painted, regardless of template transpa
 
 ## 7. Box3D Designer Pro: Scope Decisions
 
-The visual profile editor is delivered as a single self-contained HTML file with embedded
-JavaScript and CSS. The key scope decisions:
+The visual profile editor was originally delivered as a single self-contained HTML file
+(`tools/box3d_designer_pro/index.html`) with embedded JavaScript and CSS. The key scope
+decisions for the browser version:
 
 - **No server.** The file opens directly via `file://` or via Python's `webbrowser` module.
   No `localhost` server, no build step, no npm.
@@ -151,9 +152,28 @@ acceptable; if the file exceeds ~500 kB, it should be split into linked external
 
 In v2.1.0 the Designer Pro was extended with three selectable themes (Dark / Light / Retro)
 stored in `localStorage`. The Retro theme adds a CRT flicker animation via CSS keyframes.
-The tool is now also accessible at `http://127.0.0.1:8000/designer/` when the Control
+The tool is also accessible at `http://127.0.0.1:8000/designer/` when the Control
 Center server is running — this avoids the `file://` origin restriction that blocks some
 browser features (e.g. the Clipboard API used for JSON export).
+
+### Native Desktop Designer Tab (v2.1.0)
+
+In v2.1.0 a native version of the Designer Pro was built directly into the `box3d-gui`
+desktop application as a second tab (`gui/designer_tab.py` + `gui/designer_engine.py`).
+The motivation was that the browser version had two friction points:
+
+1. The `file://` origin restriction broke clipboard-based JSON export unless the user
+   was already running the web server.
+2. The profile import/export cycle (browser → download → move file → CLI) added steps
+   compared to the native GUI workflow (Designer tab → export → file saved directly to
+   the profiles directory).
+
+The native Designer tab provides full feature parity: template loading, object placement,
+quad-corner editing, spine-slot configuration, and profile import/export — without
+requiring a browser or a running web server. The canvas interaction engine
+(`gui/designer_engine.py`) was written as a pure Python class with no CustomTkinter
+dependency, using a standard `tk.Canvas` as its drawing surface. This means the engine
+logic is testable in isolation and reusable if the GUI framework changes.
 
 ---
 
@@ -236,3 +256,36 @@ removed it:
 The lesson: when an abstraction is no longer used, remove it completely rather than
 leaving it in place "just in case". The presence of the parameter implied that a temp
 directory was needed, which was false and misleading to future maintainers.
+
+---
+
+## 11. GUI Modular Split: When to Break Up a File
+
+The `gui/app.py` file grew from a clean starting point to ~909 lines across three
+development sprints, as each new GUI feature (Control Center, Designer canvas,
+constants) was added to the existing file.
+
+The trigger for splitting was not line count per se, but the emergence of a specific
+pattern: the file contained code that had fundamentally different volatility profiles.
+The canvas interaction engine (pan, zoom, drag, hit-testing) changes very frequently
+as the UI is refined. The application shell (window geometry, tab setup, header label)
+almost never changes. When these live in the same file, every canvas fix requires
+navigating past hundreds of lines of unrelated code.
+
+The split used this rule: **one clear owner per module**. Each module owns the
+answer to a single question:
+
+- `app.py` — "What tabs exist and how is the window laid out?"
+- `control_tab.py` — "How does the Control Center tab render covers?"
+- `designer_tab.py` — "What UI is in the Designer tab and how does it wire to the engine?"
+- `designer_engine.py` — "How does the canvas respond to mouse and keyboard events?"
+- `constants.py` — "What are the colour and font values for the GUI?"
+
+The most important boundary is between `designer_tab.py` and `designer_engine.py`.
+`designer_tab.py` is allowed to import `customtkinter`; `designer_engine.py` is not.
+This means the canvas interaction logic can be instantiated in a test without a full
+CTk application loop running — a property that would be lost if CTk widgets were mixed
+into the engine.
+
+The pattern mirrors the three-tier CLI/core/engine split: keep the highest-churn,
+most-testable logic as far from the framework layer as possible.
