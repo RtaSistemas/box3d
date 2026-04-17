@@ -6,6 +6,33 @@ Each sprint had a single focused scope; work was validated by the full test suit
 
 ---
 
+## SPRINT-GUI-DESIGNER-01 — Desktop GUI Designer Tab & Modular Split
+
+**Scope:** `gui/app.py`, `gui/control_tab.py`, `gui/designer_tab.py`, `gui/designer_engine.py`,
+           `gui/constants.py`, `web/server.py`, `pyproject.toml`
+**Status:** Done
+
+### Deliverables
+
+| # | Deliverable | Detail |
+|---|---|---|
+| GUI-1 | `gui/designer_tab.py` | Full visual profile geometry editor natively in the desktop app. Template loading, spine/cover/logo/marquee object placement, quad-corner drag editing, spine-slot configuration, profile import/export, live JSON preview. Full feature parity with the browser-based Designer Pro. |
+| GUI-2 | `gui/designer_engine.py` | Pure canvas interaction engine (zero CustomTkinter widgets). Zoom-to-cursor (scroll wheel), pan (middle button or Space+drag), drag/resize with corner handles, snap-to-grid, arrow-key nudge (1 px / 10 px with Shift), hit-testing (ray-casting polygon containment), profile import/export via `build_profile()` / `import_profile()`. |
+| GUI-3 | `gui/constants.py` | Shared colour palette, font constants, and designer object colours extracted from monolithic `app.py` for reuse across all GUI modules. |
+| GUI-4 | `gui/control_tab.py` | Control Center UI extracted from the monolithic `app.py` into a self-contained `ControlTab` class accepting an `on_status_change` callback. |
+| GUI-5 | Two-tab `gui/app.py` | `CTkTabview` with **Control** and **Designer** tabs; `app.py` reduced from ~909 lines to ~130 lines. |
+| GUI-6 | Logo fix — issue #24 | `gui/control_tab.py` now calls `_auto_logo(profile.root / "assets", stem)` — logos in a profile's `assets/` directory are no longer silently ignored. Same fix applied in `web/server.py`. |
+| GUI-7 | Version bump | `pyproject.toml` version `2.0.0` → `2.1.0`. |
+
+### Acceptance criteria
+
+- `pytest tests/test_v2.py -v` → **90 passed** (no regressions).
+- `pytest tests/test_web.py -v` → **30 passed** (logo fix covered).
+- `box3d-gui` opens a two-tab window: **Control** tab runs renders; **Designer** tab edits profiles visually.
+- Logo files in `profiles/<name>/assets/` are applied correctly in both GUI and web server.
+
+---
+
 ## SPRINT-UX-FINAL — UX Polish & temp_dir Eradication
 
 **Scope:** `core/pipeline.py`, `cli/bootstrap.py`, `cli/main.py`, `web/server.py`,
@@ -23,7 +50,7 @@ Each sprint had a single focused scope; work was validated by the full test suit
 | UX-5 | `/designer/` static mount | Designer Pro accessible at `http://127.0.0.1:8000/designer/` |
 | UX-6 | `rgb_matrix` on `RenderRequest` | Control Center sends `[r, g, b]` floats; neutral picker suppressed to `null`. |
 | UX-7 | `first_stem` + `output_format` in SSE sentinel | Enables the UI to construct the preview URL. |
-| UX-8 | Spine-source select | `<select>` for `auto / cover / marquee` in the Control Center options panel. |
+| UX-8 | Spine-source select | `<select>` for `left / right / center` in the Control Center options panel. |
 | UX-9 | RGB colour picker | `<input type="color">` with normalised float readout and reset button. |
 | UX-10 | Folder buttons | `📂` next to each path input — calls `POST /api/open-folder` with the typed path. |
 | UX-11 | Output preview in modal | First successfully rendered cover displayed via `GET /api/preview/`. |
@@ -32,7 +59,7 @@ Each sprint had a single focused scope; work was validated by the full test suit
 
 ### Acceptance criteria
 
-- `pytest tests/ -v` → **98 passed** (84 test_v2 + 14 test_web).
+- `pytest tests/ -v` → **120 passed** (90 test_v2 + 30 test_web).
 - `box3d` (no args) with `[web]` installed starts server on port 8000; without `[web]` prints help.
 - `📂` buttons open the correct directory in the OS file manager.
 - After a successful render, the summary modal shows a preview of the first output image.
@@ -68,7 +95,7 @@ Each sprint had a single focused scope; work was validated by the full test suit
 
 | # | Deliverable | Detail |
 |---|---|---|
-| QA-1 | `tests/test_web.py` | 14 `TestClient` tests: `TestGetProfiles` (5), `TestValidatePath` (5), `TestRenderEndpoint` (4) |
+| QA-1 | `tests/test_web.py` | 30 `TestClient` tests across `TestGetProfiles`, `TestValidatePath`, `TestRenderEndpoint`, `TestProgressStream`, `TestOpenFolder`, `TestPreviewImage` |
 | QA-2 | `pytest.importorskip` isolation | Module skipped automatically when `fastapi` not installed |
 | QA-3 | `httpx` in `[web]` extra | Added to `pyproject.toml`; required by `starlette.testclient` |
 | QA-4 | README web section | Architecture, API table, install instructions |
@@ -76,7 +103,7 @@ Each sprint had a single focused scope; work was validated by the full test suit
 
 ### Acceptance criteria
 
-- `pytest tests/test_web.py -v` → **14 passed**.
+- `pytest tests/test_web.py -v` → **30 passed**.
 - `pytest tests/test_v2.py tests/test_web.py -v` on a machine without `[web]` skips `test_web.py` gracefully.
 
 ---
@@ -206,7 +233,7 @@ Each sprint had a single focused scope; work was validated by the full test suit
 | 5.1 | PyInstaller path split | `_bundle_dir()` (read-only → `sys._MEIPASS`) + `_data_dir()` (writable → `<exe-dir>/data`) |
 | 5.2 | Bootstrap on first run | `_bootstrap_data_dir()` creates data tree idempotently |
 | 5.3 | PYTHONPATH corrected | `run.sh` / `test.sh` fixed from non-existent `src/` to project root |
-| 5.4 | Circuit Breaker aligned | `_CB_MAX_CONSECUTIVE` = 2 (MULTI-AI-PROTO-V3.4 HIGH policy) |
+| 5.4 | Circuit Breaker initial threshold | `_CB_MAX_CONSECUTIVE` was set to 2 in this sprint (historical); later corrected to 10 in the v2.0.0-rc1 hardening pass |
 | 5.5 | ADR-004 alpha semantics | `alpha_weighted_screen` union alpha confirmed correct; test updated |
 | 5.6 | `profiles validate` | Checks template existence + OOM bounds; exit code 1 on failure |
 | 5.7 | Designer command fixed | `webbrowser.open(index.html)` replaces dead `subprocess.call(app.py)` |

@@ -8,6 +8,51 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+---
+
+## [2.1.0] — 2026-04
+
+### Added
+
+- **Desktop GUI — Designer Pro tab** (`gui/designer_tab.py`) — Visual profile geometry editor
+  built natively into the `box3d-gui` desktop application. Full feature parity with the
+  browser-based Designer Pro: template loading, spine/cover/logo/marquee object placement,
+  quad-corner drag editing, spine-slot configuration, profile import/export, live JSON preview.
+- **`gui/designer_engine.py`** — Pure canvas interaction engine (zero CustomTkinter widgets).
+  Handles zoom-to-cursor (scroll wheel), pan (middle button, Space+drag), drag/resize with
+  corner handles, snap-to-grid, arrow-key nudge (1 px / 10 px with Shift), hit-testing
+  (ray-casting polygon containment), and profile import/export via `build_profile()` /
+  `import_profile()`.
+- **`gui/constants.py`** — Shared colour palette, font constants, and designer object colours
+  extracted from `app.py` for reuse across all GUI modules.
+- **`gui/control_tab.py`** — Control Center UI extracted from the monolithic `app.py` into a
+  self-contained class (`ControlTab`), accepting an `on_status_change` callback.
+- **Two-tab layout** in `gui/app.py` — `CTkTabview` with **Control** and **Designer** tabs;
+  `app.py` reduced from 909 lines to ~130 lines.
+
+### Fixed
+
+- **Logo paths always `None` in GUI and web server** (issue #24) — `gui/control_tab.py` and
+  `web/server.py` were hardcoding `logo_paths = {"top": None, "bottom": None}`, so
+  `logo_top.png` / `logo_bottom.png` in a profile's `assets/` directory were silently ignored.
+  Both modules now call `_auto_logo(profile.root / "assets", stem)` — matching the CLI
+  behaviour that was already correct.
+
+### Changed
+
+- **`gui/app.py`** refactored from a 909-line monolith to a ~130-line thin shell. All
+  application logic now lives in the focused module that owns it.
+- **`pyproject.toml`** version bumped `2.0.0` → `2.1.0`.
+- **`CLAUDE.md`** updated: version, test counts, module map, CLI defaults, new constraints.
+- **`README.md`** updated: test counts, circuit breaker description, GUI section, Designer Pro
+  section, architecture tree.
+
+---
+
+## [2.0.0] — 2026-03
+
 ### Added (SPRINT-UX-FINAL)
 
 - **Default-serve behaviour** — running `box3d` with no subcommand now launches
@@ -24,7 +69,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   multipliers to the pipeline; the colour picker converts hex → `[r, g, b]` floats.
 - **`first_stem` + `output_format` in SSE sentinel** — allows the UI to construct
   the preview URL after a successful render.
-- **Spine-source `<select>`** in the Control Center — exposes `auto / cover / marquee`
+- **Spine-source `<select>`** in the Control Center — exposes `left / right / center`
   without requiring the CLI.
 - **RGB colour picker** — `<input type="color">` with a normalised float readout
   and a ↺ reset button that returns to neutral (`1.0, 1.0, 1.0`).
@@ -80,7 +125,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - **`web/ui/`** — Control Center: vanilla JS SPA (`index.html`, `app.js`,
   `style.css`). No framework, no build step.
 - **`box3d serve`** CLI command — starts Uvicorn; `--host` and `--port` flags.
-- **`tests/test_web.py`** — 14 `TestClient` tests for the API; uses
+- **`tests/test_web.py`** — `TestClient` tests for the API; uses
   `pytest.importorskip("fastapi")` so the suite is skipped when `[web]` is absent.
 - **`httpx`** added to the `[web]` optional dependency group (required by
   Starlette `TestClient`).
@@ -104,7 +149,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Plugin profile system (`profiles/` directory; zero code changes for new styles)
 - Three built-in profiles: `mvs` (703×1000), `arcade` (665×907), `dvd` (633×907)
 - Per-slot logo rotation (`LogoSlot.rotate` int degrees)
-- Circuit breaker: aborts after 2 consecutive errors or > 20 % error rate
+- Circuit breaker: aborts after 10 consecutive errors or > 20 % error rate
 - `_safe_open()` — centralised OOM-hardened image loader (thumbnail ≤ 8 192 px)
 - PyInstaller standalone executables (`_bundle_dir()` / `_data_dir()` split)
 - `_bootstrap_data_dir()` — idempotent first-run folder creation
@@ -149,5 +194,7 @@ Version 1.x was a single-file script without plugin profiles, parallel rendering
 
 ---
 
-[Unreleased]: https://github.com/RtaSistemas/box3d/compare/v2.0.0-rc1...HEAD
+[Unreleased]: https://github.com/RtaSistemas/box3d/compare/v2.1.0...HEAD
+[2.1.0]:      https://github.com/RtaSistemas/box3d/compare/v2.0.0...v2.1.0
+[2.0.0]:      https://github.com/RtaSistemas/box3d/compare/v2.0.0-rc1...v2.0.0
 [2.0.0-rc1]:  https://github.com/RtaSistemas/box3d/releases/tag/v2.0.0-rc1

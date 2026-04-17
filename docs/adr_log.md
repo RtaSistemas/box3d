@@ -261,3 +261,118 @@ completes.  Callers supply their own implementation:
 - **Negative:** The callback runs inside the `as_completed` loop on the main thread of
   the `ThreadPoolExecutor` context; heavy callback implementations could become a
   bottleneck.  In practice both implementations are O(1) (print + queue.put).
+
+---
+
+## ADR-007: Desktop GUI — Modular Split of the Monolithic `gui/app.py`
+
+**Status:** Accepted
+
+**Date:** 2026-04
+
+### Context
+
+The desktop GUI initially lived entirely in a single `gui/app.py` file that grew to
+~909 lines as the Control Center tab, Designer canvas, constants, and application shell
+were added incrementally. A monolith of this size has several failure modes:
+
+- Any change to the canvas engine requires reading and understanding 900+ lines of
+  unrelated UI code.
+- The CustomTkinter widget layer and the pure-canvas interaction logic are interleaved,
+  making the canvas engine impossible to unit-test in isolation.
+- Constants (colour palette, font sizes) duplicated across the file are a source of
+  drift when the theme changes.
+- The `App` class (the window shell) is coupled to rendering logic, path-management
+  logic, and canvas hit-testing logic simultaneously.
+
+### Decision
+
+Split `gui/app.py` into five focused modules:
+
+| Module | Responsibility |
+|---|---|
+| `gui/app.py` | Thin shell: window setup, header, `CTkTabview` with two tabs |
+| `gui/control_tab.py` | Control Center tab: all batch-render UI and pipeline invocation |
+| `gui/designer_tab.py` | Designer Pro tab: layout, right-panel sections, profile I/O |
+| `gui/designer_engine.py` | Pure canvas interaction: zero CTk widgets, no I/O, no profile logic |
+| `gui/constants.py` | Shared colour palette and font constants |
+
+The split follows the same boundary principle as the CLI/core/engine tiers: each module
+has one clear owner, and the most volatile logic (canvas interaction) is isolated in a
+module with no UI framework dependency.
+
+`gui/designer_engine.py` is kept free of all CustomTkinter imports so it can be tested
+as a pure Python class (instantiated with a plain `tk.Canvas`), independent of the
+full application lifecycle.
+
+### Consequences
+
+- **Positive:** `gui/app.py` is now ~130 lines; the module is readable in one sitting.
+- **Positive:** `gui/designer_engine.py` has no CTk dependency — changes to the canvas
+  interaction logic do not require understanding the tab layout.
+- **Positive:** `gui/constants.py` is the single source of truth for the colour palette;
+  changing a theme colour requires editing one file.
+- **Negative:** Five files instead of one; contributors must know which module owns which
+  behaviour. The module map in `CLAUDE.md` documents this.
+
+---
+
+## ADR-008: Logo Auto-Discovery — `_auto_logo()` Must Be Called in All Interfaces
+
+**Status:** Accepted
+
+**Date:** 2026-04
+
+### Context
+
+The CLI (`cli/main.py`) correctly resolved logo files from a profile's `assets/`
+directory using `_auto_logo(assets_dir, stem)`, which checks `.png` then `.webp`
+extensions before returning `None`.
+
+Both the desktop GUI (`gui/control_tab.py`) and the web server (`web/server.py`) were
+independently hardcoding:
+
+```python
+logo_paths = {"top": None, "bottom": None}
+```
+
+This meant that `logo_top.png` and `logo_bottom.png` placed in a profile's `assets/`
+directory were silently ignored — a regression from the CLI's documented behaviour.
+The root cause was copy-paste of the pipeline instantiation block without porting the
+logo resolution step (issue #24).
+
+### Decision
+
+Define `_auto_logo(assets_dir: Path, stem: str) -> Path | None` in each module that
+constructs a `RenderPipeline`. Each definition is identical:
+
+```python
+def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
+    for ext in (".png", ".webp"):
+        p = assets_dir / f"{stem}{ext}"
+        if p.exists():
+            return p
+    return None
+```
+
+Every `RenderPipeline` instantiation in every interface (CLI, GUI, web server) must
+pass:
+
+```python
+logo_paths = {
+    "top":    _auto_logo(profile.root / "assets", "logo_top"),
+    "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
+}
+```
+
+The rule is documented as a constraint in `CLAUDE.md` to prevent future regressions.
+
+### Consequences
+
+- **Positive:** Logo overlays work consistently across all three interfaces.
+- **Positive:** No interface silently ignores assets that the user placed correctly.
+- **Positive:** `CLAUDE.md` constraint makes the rule visible to AI assistants and
+  future contributors before they write new interface code.
+- **Negative:** The helper is defined three times (CLI, GUI, web). A future refactor
+  could extract it to `core/` or a shared utility, but the current scope does not
+  justify the coupling.
