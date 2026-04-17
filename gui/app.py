@@ -53,6 +53,7 @@ class App(ctk.CTk):
 
         self._build_header()
         self._build_tabs()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # =========================================================================
     # Header
@@ -112,7 +113,7 @@ class App(ctk.CTk):
         tabs.add("Control")
         tabs.add("Designer")
 
-        ControlTab(tabs.tab("Control"),  on_status_change=self._update_status)
+        self._control_tab = ControlTab(tabs.tab("Control"), on_status_change=self._update_status)
         DesignerTab(tabs.tab("Designer"))
 
     # =========================================================================
@@ -121,6 +122,10 @@ class App(ctk.CTk):
 
     def _update_status(self, text: str, color: str) -> None:
         self._status_label.configure(text=text, text_color=color)
+
+    def _on_close(self) -> None:
+        self._control_tab.save_config()
+        self.destroy()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
