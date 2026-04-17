@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**box3d** (v2.0.0) is a Python CLI application that renders photorealistic 3D box art from flat game cover images. It warps front cover + spine images onto box templates using perspective transforms, composites them with RGBA templates, and outputs WebP/PNG files.
+**box3d** (v2.1.0) is a Python CLI application that renders photorealistic 3D box art from flat game cover images. It warps front cover + spine images onto box templates using perspective transforms, composites them with RGBA templates, and outputs WebP/PNG files.
 
 - **Language:** Python 3.11+
 - **Runtime dependencies:** `Pillow >= 10.0`, `NumPy >= 1.24`
@@ -41,7 +41,11 @@ Optional components (`web/`, `gui/`) sit alongside this stack and call into `cor
 | `cli/bootstrap.py` | First-run path resolution (PyInstaller-aware), folder creation, profile copying |
 | `cli/utils.py` | `parse_rgb_str()` for "R,G,B" → color matrix conversion |
 | `web/server.py` | Optional FastAPI HTTP API + SSE progress stream + static SPA mount |
-| `gui/app.py` | Optional CustomTkinter desktop GUI with live preview |
+| `gui/app.py` | Optional CustomTkinter desktop GUI — thin shell (header + CTkTabview) |
+| `gui/constants.py` | Shared colour palette, font constants, and designer object colours |
+| `gui/control_tab.py` | Control Center tab: batch-render UI, profile selector, live preview |
+| `gui/designer_tab.py` | Designer Pro tab: visual profile editor with canvas, quad editing, JSON export |
+| `gui/designer_engine.py` | Pure canvas interaction engine (zoom/pan, quad/handle drag, hit-testing) |
 
 ### Profiles (Plugin System)
 
@@ -76,6 +80,8 @@ New profiles require **zero code changes** — drop a directory in `profiles/` a
 
 8. **Contract assertions at engine boundaries:** `compose_cover()` and `build_spine()` validate RGBA mode, dimension bounds, and parameter ranges at call sites; fail fast on invalid state.
 
+9. **Logo auto-discovery:** `_auto_logo(assets_dir, stem)` in `cli/main.py`, `gui/control_tab.py`, and `web/server.py` resolves logo files by checking `.png` then `.webp` extensions. GUI and web server must use this — never hardcode `logo_paths = {"top": None, "bottom": None}`.
+
 ---
 
 ## Development Workflow
@@ -91,6 +97,9 @@ pip install -e ".[dev,web]"
 
 # With desktop GUI support
 pip install -e ".[dev,gui]"
+
+# Full stack (all extras)
+pip install -e ".[dev,web,gui]"
 ```
 
 ### Running the CLI
@@ -102,7 +111,7 @@ pip install -e ".[dev,gui]"
 # Via installed entrypoint
 box3d render --profile mvs
 
-# Desktop GUI
+# Desktop GUI (two tabs: Control + Designer)
 box3d-gui
 
 # Direct module
@@ -112,11 +121,14 @@ python -m cli.main render --profile mvs
 ### Running Tests
 
 ```bash
-# Primary test suite (78 unit + integration tests) — always run this
+# Primary test suite (90 unit + integration tests) — always run this
 pytest tests/test_v2.py -v
 
 # Web API tests (requires [web] extra)
 pytest tests/test_web.py -v
+
+# Full suite (120 tests total)
+pytest tests/ -v
 
 # Visual regression tests
 python tests/run_visual_tests.py
@@ -176,7 +188,14 @@ Requires `pip install -e ".[gui]"` (CustomTkinter).
 box3d-gui
 ```
 
-Full feature parity with the web Control Center. Dark theme, live preview, background threading + queue polling for real-time updates. Entry point: `gui/app.py:main`.
+Two-tab interface. Entry point: `gui/app.py:main`.
+
+| Tab | Module | Description |
+|---|---|---|
+| **Control** | `gui/control_tab.py` | Full feature parity with the web Control Center: profile selector, paths, render options, RGB tint, live preview, summary dialog |
+| **Designer** | `gui/designer_tab.py` | Visual profile geometry editor: load template, drag spine/cover/logo/marquee objects, edit quad corners, configure spine layout slots, import/export `profile.json`, live JSON preview |
+
+The `gui/designer_engine.py` module handles all canvas interaction (zoom, pan, drag, resize, hit-testing) and is kept free of any UI framework widgets. `gui/constants.py` holds the shared colour palette used by all GUI modules.
 
 ---
 
@@ -185,7 +204,7 @@ Full feature parity with the web Control Center. Dark theme, live preview, backg
 ### GitHub Actions
 
 - **`ci.yml`** — Runs on push to `main` and all PRs. Tests Python 3.11, 3.12, 3.13 in matrix. Cancels in-flight runs on new commits.
-- **`release.yml`** — Triggered by `v*` tags. Runs test gate first, then builds standalone executables for Windows x64 and Linux x64 via PyInstaller. Bundles: CLI + GUI executables, `profiles/`, `web/ui/`, `tools/`.
+- **`release.yml`** — Triggered by `v*` tags. Runs test gate first (`test_v2.py` + `test_web.py`), then builds standalone executables for Windows x64 and Linux x64 via PyInstaller. Bundles: CLI + GUI executables, `profiles/`, `web/ui/`, `tools/`.
 
 ### Install command used in CI
 
@@ -229,6 +248,9 @@ No code changes required.
   "cover": { "width": <int>, "height": <int> },
   "spine_quad": { "tl": [x,y], "tr": [x,y], "br": [x,y], "bl": [x,y] },
   "cover_quad": { "tl": [x,y], "tr": [x,y], "br": [x,y], "bl": [x,y] },
+  "spine_source": "left",
+  "cover_fit": "stretch",
+  "spine_source_frac": 0.20,
   "spine_layout": {
     "game":   { "max_w": <int>, "max_h": <int>, "center_y": <int>, "rotate": <deg> },
     "top":    { "max_w": <int>, "max_h": <int>, "center_y": <int>, "rotate": <deg> },
@@ -248,17 +270,20 @@ All pixel coordinates are within the `template_size` canvas. No dimension may ex
 box3d render --profile <name>
   --input <dir>           Source directory (default: data/inputs/covers)
   --output <dir>          Output directory (default: data/output/converted)
-  --workers <n>           Parallel workers (default: 4)
-  --blur-radius <n>       Spine background blur 0–50 (default: 8)
-  --darken <f>            Spine darkness multiplier 0.0–1.0 (default: 0.55)
+  --workers <n|auto>      Parallel workers (default: 4; "auto" = os.cpu_count())
+  --blur-radius <n>       Spine background blur 0–50 (default: 20)
+  --darken <n>            Spine dark overlay alpha 0–255 (default: 180)
   --rgb <R,G,B>           RGB channel scaling (default: 1.0,1.0,1.0)
-  --cover-fit <mode>      stretch | fit | crop (default: stretch)
-  --spine-source <mode>   left | right | center  (cover edge used as spine background)
+  --cover-fit <mode>      stretch | fit | crop (profile default)
+  --spine-source <mode>   left | right | center (profile default)
+  --top-logo <path>       Override path to top spine logo
+  --bottom-logo <path>    Override path to bottom spine logo
+  --marquees-dir <dir>    Per-game marquee directory (default: data/inputs/marquees)
   --output-format <fmt>   webp | png (default: webp)
   --skip-existing         Skip already-rendered files
   --dry-run               Validate inputs without rendering
-  --no-rotate             Disable cover rotation detection
-  --no-logos              Skip spine logo overlays
+  --no-rotate             Disable logo rotation on spine
+  --no-logos              Skip all spine logo overlays
   --verbose               DEBUG-level logging
   --log-file <path>       Write log to file
 
@@ -276,6 +301,8 @@ box3d serve               Start web Control Center (requires [web] extra)
 
 `tools/box3d_designer_pro/index.html` is a self-contained browser UI for visually designing profile geometry (quad placement, spine layout). Open it directly in a browser — no server needed. Also served at `/designer/` when the web server is running.
 
+The same Designer capability is available natively in the desktop GUI (`box3d-gui`) as the **Designer** tab, built on `gui/designer_tab.py` + `gui/designer_engine.py`.
+
 ---
 
 ## Important Constraints
@@ -287,3 +314,4 @@ box3d serve               Start web Control Center (requires [web] extra)
 - **Circuit breaker thresholds** (`_CB_MAX_CONSECUTIVE = 10`, `_CB_PCT_THRESHOLD = 0.20`, min 3 errors) are regression-tested — change only with justification
 - **Profile path traversal checks in `registry.py`** — do not weaken the `^[a-zA-Z0-9_-]+$` validation
 - **BUG-04 ordering:** `on_progress` is called *before* circuit breaker evaluation so the triggering item is always reported to the UI — preserve this ordering
+- **Logo paths in GUI and web server** — always call `_auto_logo(profile.root / "assets", stem)` when building `logo_paths` for `RenderPipeline`; never hardcode `None`
