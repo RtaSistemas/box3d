@@ -26,11 +26,11 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from .constants import (                                    # noqa: E402
+from gui.constants import (                                 # noqa: E402
     _VERSION, _BG, _PANEL, _ACCENT, _ACCENT2, _OK, _DIM, _FONT_MONO,
 )
-from .control_tab  import ControlTab                        # noqa: E402
-from .designer_tab import DesignerTab                       # noqa: E402
+from gui.control_tab  import ControlTab                     # noqa: E402
+from gui.designer_tab import DesignerTab                    # noqa: E402
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
