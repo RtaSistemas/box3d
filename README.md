@@ -1,4 +1,3 @@
-<img width="1920" height="1032" alt="Control" src="https://github.com/user-attachments/assets/32d9fe97-b66a-4c01-8990-0813e4a60ccd" />
 # box3d
 
 [![CI](https://github.com/RtaSistemas/box3d/actions/workflows/ci.yml/badge.svg)](https://github.com/RtaSistemas/box3d/actions/workflows/ci.yml)
@@ -93,7 +92,7 @@ pip install -e ".[web]"     # adds FastAPI + Uvicorn + httpx
 
 ### With desktop GUI
 
-<img width="1920" height="1032" alt="Control" src="https://github.com/user-attachments/assets/6574f9ec-136d-4cfa-ab8c-1ffafb8460f2" />
+<img width="1920" height="1032" alt="Control" src="https://github.com/user-attachments/assets/05e42e2c-9b6b-4b8f-950a-6df89ec94345" />
 
 <img width="1920" height="1032" alt="Designer" src="https://github.com/user-attachments/assets/2f5eb802-444e-43d8-9be8-267c8e0ed49d" />
 
