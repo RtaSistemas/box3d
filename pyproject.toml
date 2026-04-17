@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "box3d"
-version     = "2.0.0"
+version     = "2.1.0"
 description = "Arcade game 3D box art generator — plugin profiles, pure Pillow + NumPy"
 readme      = "README.md"
 license     = { text = "MIT" }

@@ -41,11 +41,12 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 | **Web Control Center** | Browser UI: profile selector, path validation, live progress, preview, file-manager integration |
 | **Parallel rendering** | `ThreadPoolExecutor` with configurable workers; `--workers auto` uses all CPU cores |
 | **Cached homography** | Perspective coefficients are cached with `lru_cache`; identical quads are computed once |
-| **Batch circuit breaker** | Aborts after 2 consecutive errors or when errors exceed 20 % of processed files |
+| **Batch circuit breaker** | Aborts after 10 consecutive errors or when errors exceed 20 % of processed files |
 | **OOM hardening** | Hard 8 192 px ceiling at two independent layers; immune to pixel-bomb inputs |
 | **Zero-disk-churn** | All intermediate images live in RAM as `PIL.Image` objects — no temp files |
 | **Pure Python core** | Pillow ≥ 10 and NumPy ≥ 1.24 only — no external binaries required |
-| **Visual profile editor** | Box3D Designer Pro: browser-based authoring tool, Dark/Light/Retro themes |
+| **Visual profile editor** | Box3D Designer Pro: browser-based and native GUI authoring tool, Dark/Light/Retro themes |
+| **Desktop GUI** | CustomTkinter app with Control + Designer tabs — no browser required |
 | **Standalone executables** | PyInstaller `--onefile` builds for Linux x86-64 and Windows x86-64 |
 | **Multiple output formats** | WebP (q 92, default) or lossless PNG |
 | **Incremental batches** | `--skip-existing` skips already-rendered outputs |
@@ -87,6 +88,13 @@ pip install -e .            # Pillow + NumPy only — full CLI
 
 ```bash
 pip install -e ".[web]"     # adds FastAPI + Uvicorn + httpx
+```
+
+### With desktop GUI
+
+```bash
+pip install -e ".[gui]"     # adds CustomTkinter
+box3d-gui                   # opens two-tab window: Control + Designer
 ```
 
 ### With dev dependencies (tests)
@@ -134,6 +142,17 @@ box3d serve
 ```
 
 Running `box3d` with **no subcommand** automatically starts the web server if the `[web]` extra is installed. If it is not installed, the help text is shown instead.
+
+### Desktop GUI
+
+```bash
+pip install -e ".[gui]"
+box3d-gui
+```
+
+The GUI has two tabs:
+- **Control** — same functionality as the web Control Center (profile selector, paths, render options, live preview)
+- **Designer** — visual profile editor (drag quads, edit spine slots, import/export `profile.json`)
 
 ### Dry-run (validate without rendering)
 
@@ -322,6 +341,13 @@ box3d/
 │       ├── app.js       ← Fetch + EventSource client logic
 │       └── style.css    ← Dark neon palette matching Designer Pro
 │
+├── gui/                 ← Optional desktop GUI (pip install .[gui], CustomTkinter)
+│   ├── app.py           ← Thin entry point: header + CTkTabview wiring
+│   ├── constants.py     ← Shared colour palette and font constants
+│   ├── control_tab.py   ← Control Center tab (render pipeline, live preview)
+│   ├── designer_tab.py  ← Designer Pro tab (canvas UI, profile I/O)
+│   └── designer_engine.py ← Pure canvas engine (zoom/pan, quad editing, hit-testing)
+│
 ├── profiles/            ← Plugin bundles (JSON + template + assets)
 │   ├── mvs/             ← Neo Geo MVS cartridge  703 × 1 000 px
 │   │   ├── profile.json
@@ -338,8 +364,8 @@ box3d/
 │       └── index.html   ← Self-contained visual profile editor (v1.3.0)
 │
 └── tests/
-    ├── test_v2.py       ← 84 unit + integration tests
-    ├── test_web.py      ← 14 FastAPI / SSE tests (skipped if [web] not installed)
+    ├── test_v2.py       ← 90 unit + integration tests
+    ├── test_web.py      ← 30 FastAPI / SSE tests (skipped if [web] not installed)
     ├── run_visual_tests.py
     └── assets/          ← Fixtures: cover, marquee, logos, templates
 ```
@@ -547,14 +573,19 @@ On first launch, the executable creates the entire working tree next to itself:
 
 ## Box3D Designer Pro
 
-A self-contained visual editor for authoring and editing profiles.
+A visual editor for authoring and editing profiles. Available in two forms:
 
-- **No server, no build step** — open `tools/box3d_designer_pro/index.html` directly, or navigate to `/designer/` when the Control Center is running.
-- **Dark / Light / Retro themes** — toggle from the toolbar; preference is saved in `localStorage`.
-- **Capabilities:** load any PNG template, drag quads, adjust spine layout slots, real-time JSON preview, export `profile.json`, import existing profiles.
+**Browser version** (`tools/box3d_designer_pro/index.html`)
+- No server, no build step — open directly in any browser, or navigate to `/designer/` when the Control Center is running.
+- Dark / Light / Retro themes — toggle from the toolbar; preference is saved in `localStorage`.
+
+**Native GUI version** (built into `box3d-gui`, **Designer** tab)
+- No browser required — available directly in the desktop application alongside the Control Center.
+- Same capabilities: load any PNG/WebP template, drag spine/cover/logo/marquee objects, edit quad corners precisely, configure spine layout slots, real-time JSON preview, import/export `profile.json`.
 
 ```bash
-box3d designer          # opens Designer Pro in the default browser
+box3d designer          # opens browser Designer Pro
+box3d-gui               # opens desktop app (select Designer tab)
 ```
 
 ---
@@ -567,7 +598,7 @@ box3d designer          # opens Designer Pro in the default browser
 pytest tests/test_v2.py -v
 ```
 
-Expected: **84 tests passed**.
+Expected: **90 tests passed**.
 
 ### Web API tests
 
@@ -575,12 +606,12 @@ Expected: **84 tests passed**.
 pytest tests/test_web.py -v    # skipped automatically if [web] extra not installed
 ```
 
-Expected: **14 tests passed**.
+Expected: **30 tests passed**.
 
 ### Full suite
 
 ```bash
-pytest tests/ -v               # 98 tests total
+pytest tests/ -v               # 120 tests total
 ```
 
 ### Test coverage breakdown
@@ -598,6 +629,8 @@ pytest tests/ -v               # 98 tests total
 | `TestGetProfiles` | 5 | `/api/profiles` — status, schema, built-ins, OOM limit |
 | `TestValidatePath` | 5 | `/api/validate-path` — valid dir, missing, file, empty, 422 |
 | `TestRenderEndpoint` | 4 | `/api/render` — unknown profile, bad dir, started, 422 |
+| `TestProgressSSE` | 8 | `/api/progress` — SSE stream delivery and event format |
+| `TestPreviewEndpoint` | 8 | `/api/preview/{filename}` — file serving, not-found, format |
 
 ### Visual regression tests
 
@@ -614,9 +647,9 @@ Output written to `tests/visual_output/` (gitignored).
 ## Contributing
 
 1. Fork and create a feature branch.
-2. `pip install -e ".[dev,web]"` to install all dev dependencies.
+2. `pip install -e ".[dev,web,gui]"` to install all dev dependencies.
 3. Add tests for any new behaviour.
-4. `pytest tests/ -v` — all 98 tests must pass.
+4. `pytest tests/ -v` — all 120 tests must pass.
 5. Open a pull request against `main`.
 
 **Adding a new built-in profile:** follow [Creating a profile](#creating-a-profile). Include `template.png` and at least one end-to-end test in `TestPipeline`.
