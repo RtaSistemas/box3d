@@ -113,8 +113,9 @@ class App(ctk.CTk):
         tabs.add("Control")
         tabs.add("Designer")
 
+        self._tabs = tabs
         self._control_tab = ControlTab(tabs.tab("Control"), on_status_change=self._update_status)
-        DesignerTab(tabs.tab("Designer"))
+        DesignerTab(tabs.tab("Designer"), on_install_cb=self.reload_and_select_profile)
 
     # =========================================================================
     # Status callback (used by ControlTab)
@@ -122,6 +123,11 @@ class App(ctk.CTk):
 
     def _update_status(self, text: str, color: str) -> None:
         self._status_label.configure(text=text, text_color=color)
+
+    def reload_and_select_profile(self, name: str) -> None:
+        """Called by DesignerTab after installing a profile: reload + switch tab."""
+        self._control_tab.reload_profiles(select=name)
+        self._tabs.set("Control")
 
     def _on_close(self) -> None:
         self._control_tab.save_config()

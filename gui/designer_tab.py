@@ -7,7 +7,10 @@ spine-slot configuration, profile import/export, and live JSON preview.
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -25,11 +28,17 @@ from .designer_engine import DesignerEngine
 class DesignerTab:
     """Designer Pro tab — builds its UI inside the given *parent* frame."""
 
-    def __init__(self, parent: ctk.CTkFrame) -> None:
-        self._parent      = parent
+    def __init__(
+        self,
+        parent: ctk.CTkFrame,
+        on_install_cb: Callable[[str], None] | None = None,
+    ) -> None:
+        self._parent       = parent
         self._engine: DesignerEngine | None = None
         self._cur_obj: dict | None          = None
-        self._updating_ui = False
+        self._updating_ui  = False
+        self._template_path: Path | None    = None
+        self._on_install   = on_install_cb or (lambda name: None)
 
         # 3-column layout: left | canvas | right
         parent.grid_columnconfigure(0, weight=0, minsize=235)
@@ -145,6 +154,15 @@ class DesignerTab:
             command=self._export_profile,
         ).grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
+        ctk.CTkButton(
+            io_btns, text="▶ Usar no Control",
+            height=30, corner_radius=4,
+            fg_color="transparent", border_color=_ACCENT2, border_width=1,
+            text_color=_ACCENT2, hover_color=_PANEL2,
+            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            command=self._install_profile,
+        ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+
         # ── Render settings ───────────────────────────────────────────────────
         r = self._heading(left, "▸ RENDER SETTINGS", r)
 
@@ -244,12 +262,12 @@ class DesignerTab:
     # =========================================================================
 
     def _build_canvas(self, parent: ctk.CTkFrame) -> None:
-        cframe = ctk.CTkFrame(parent, fg_color=_BG, corner_radius=0)
+        cframe = ctk.CTkFrame(parent, fg_color=_PANEL, corner_radius=0)
         cframe.grid(row=0, column=1, sticky="nsew")
         cframe.grid_columnconfigure(0, weight=1)
         cframe.grid_rowconfigure(0, weight=1)
 
-        self._canvas = tk.Canvas(cframe, bg=_BG, highlightthickness=0, bd=0, cursor="crosshair")
+        self._canvas = tk.Canvas(cframe, bg=_PANEL, highlightthickness=0, bd=0, cursor="crosshair")
         self._canvas.grid(row=0, column=0, sticky="nsew")
 
         self._engine = DesignerEngine(
@@ -543,6 +561,7 @@ class DesignerTab:
             return
         try:
             img = Image.open(path).convert("RGBA")
+            self._template_path = Path(path)
             if self._engine:
                 self._engine.set_template(img)
                 self._engine.fit_to_screen()
@@ -674,6 +693,68 @@ class DesignerTab:
             "spine_layout":      sl,
             "description":       self._desc_var.get().strip(),
         }
+
+    def _install_profile(self) -> None:
+        """Install the current profile into profiles/ and reload the Control tab."""
+        from cli.bootstrap import _PROFILES
+
+        if not self._engine:
+            return
+
+        name = self._name_var.get().strip() or "profile"
+        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+            messagebox.showerror(
+                "Nome inválido",
+                f"O nome '{name}' é inválido.\n"
+                "Use apenas letras, números, underscores e hífens.",
+            )
+            return
+
+        types = {o["type"] for o in self._engine.objects}
+        if "spine" not in types or "cover" not in types:
+            messagebox.showerror(
+                "Profile incompleto",
+                "O profile precisa ter pelo menos um objeto spine e um cover.",
+            )
+            return
+
+        try:
+            extras = self._gather_extras()
+            data   = self._engine.build_profile(name, extras)
+        except Exception as exc:
+            messagebox.showerror("Erro ao gerar profile", str(exc))
+            return
+
+        profile_dir = _PROFILES / name
+        if profile_dir.exists():
+            if not messagebox.askyesno(
+                "Sobrescrever?",
+                f"O profile '{name}' já existe.\nDeseja sobrescrever?",
+            ):
+                return
+
+        try:
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            (profile_dir / "profile.json").write_text(
+                json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8",
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro ao instalar", f"Não foi possível salvar o profile:\n{exc}")
+            return
+
+        if self._template_path and self._template_path.is_file():
+            try:
+                shutil.copy2(self._template_path, profile_dir / "template.png")
+            except Exception as exc:
+                messagebox.showwarning("Aviso", f"Não foi possível copiar o template:\n{exc}")
+        else:
+            messagebox.showwarning(
+                "Sem template",
+                f"Profile instalado sem template.png.\n"
+                f"Copie um template.png para profiles/{name}/ antes de renderizar.",
+            )
+
+        self._on_install(name)
 
     def _update_json_preview(self) -> None:
         if not self._engine:
