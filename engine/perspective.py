@@ -126,7 +126,7 @@ def resize_for_fit(
 
     if mode == "stretch":
         if img.size != (target_w, target_h):
-            img = img.resize((target_w, target_h), Image.BICUBIC)
+            img = img.resize((target_w, target_h), Image.LANCZOS)
         return img
 
     iw, ih = img.size
