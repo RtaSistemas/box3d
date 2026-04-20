@@ -751,13 +751,14 @@ class ControlTab:
             img.thumbnail((260, 260), Image.LANCZOS)
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
             self._prev_img_lbl.configure(image=ctk_img)
-            self._preview_ctk_img = ctk_img
+            self._prev_img_lbl._ctk_image = ctk_img  # prevent GC
             self._prev_idle_lbl.grid_remove()
             self._prev_img_lbl.grid()
             if stem:
-                self._prev_stem_lbl.configure(text=stem)
-        except Exception:
-            pass
+                self._prev_stem_lbl.configure(text=Path(stem).name)
+            self._right.update_idletasks()
+        except Exception as exc:
+            self._log(f"⚠  Preview error: {exc}")
 
     # =========================================================================
     # Config persistence (issue #27)

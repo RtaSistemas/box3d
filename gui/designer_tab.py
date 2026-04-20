@@ -14,8 +14,9 @@ from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
+import numpy as np
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .constants import (
     _BG, _PANEL, _PANEL2, _BORDER,
@@ -80,7 +81,17 @@ class DesignerTab:
             left, text="No template loaded.",
             font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
         )
-        self._tpl_info_lbl.grid(row=r, column=0, sticky="w", padx=14, pady=(0, 8))
+        self._tpl_info_lbl.grid(row=r, column=0, sticky="w", padx=14, pady=(0, 4))
+        r += 1
+
+        ctk.CTkButton(
+            left, text="✦ Fix Template Alpha",
+            height=26, corner_radius=4,
+            fg_color="transparent", border_color=_BORDER, border_width=1,
+            text_color=_DIM, hover_color=_PANEL2,
+            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            command=self._fix_template_alpha,
+        ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 8))
         r += 1
 
         # ── Objects ───────────────────────────────────────────────────────────
@@ -602,6 +613,32 @@ class DesignerTab:
             self._tpl_info_lbl.configure(text=f"{Path(path).name}  ({img.width}×{img.height})")
         except Exception as exc:
             messagebox.showerror("Error", f"Cannot load image:\n{exc}")
+
+    def _fix_template_alpha(self) -> None:
+        """Anti-alias the loaded template's alpha channel in-place via PIL."""
+        if not self._template_path or not self._template_path.is_file():
+            messagebox.showwarning("Fix Alpha", "Load a template image first.")
+            return
+        if self._template_path.suffix.lower() != ".png":
+            messagebox.showwarning("Fix Alpha", "Only PNG templates can be fixed in-place.")
+            return
+        try:
+            img = Image.open(self._template_path).convert("RGBA")
+            r, g, b, a = img.split()
+            a_arr    = np.array(a, dtype=np.float32)
+            a_binary = (a_arr > 128).astype(np.float32) * 255.0
+            a_clean  = Image.fromarray(a_binary.astype(np.uint8), "L")
+            a_smooth = a_clean.filter(ImageFilter.GaussianBlur(radius=1.5))
+            fixed    = Image.merge("RGBA", (r, g, b, a_smooth))
+            fixed.save(str(self._template_path), "PNG", optimize=False)
+            if self._engine:
+                self._engine.set_template(fixed)
+            self._tpl_info_lbl.configure(
+                text=f"{self._template_path.name}  ({fixed.width}×{fixed.height})  ✦ alpha fixed"
+            )
+            messagebox.showinfo("Fix Alpha", "Alpha channel anti-aliased and saved.")
+        except Exception as exc:
+            messagebox.showerror("Fix Alpha", f"Failed:\n{exc}")
 
     def _toggle_grid(self) -> None:
         if self._engine:

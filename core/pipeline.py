@@ -274,10 +274,10 @@ class RenderPipeline:
         """
         from engine.compositor import compose_cover
 
-        stem = cover_path.stem
+        rel  = cover_path.relative_to(self.covers_dir)
+        stem = str(rel.with_suffix(""))  # relative path used by GUI preview to locate output
         t0   = time.perf_counter()
 
-        rel         = cover_path.relative_to(self.covers_dir)
         output_path = self.output_dir / rel.with_suffix(f".{self.options.output_format}")
 
         if self.options.dry_run:
