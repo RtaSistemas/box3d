@@ -162,7 +162,7 @@ def _paste_logo(
     logo = logo_img.copy().convert("RGBA")
 
     if rotate_angle != 0:
-        logo = logo.rotate(rotate_angle, expand=True)
+        logo = logo.rotate(rotate_angle, expand=True, resample=Image.BICUBIC)
 
     # Fit within (max_w × max_h), never upscale
     lw, lh = logo.size

@@ -142,6 +142,7 @@ jobs:
           pyinstaller \
             --onefile \
             --strip \
+            --noconsole \
             --name ${{ matrix.gui_build_name }} \
             --add-data "profiles:profiles" \
             --collect-all customtkinter \
@@ -154,6 +155,8 @@ jobs:
         run: |
           pyinstaller `
             --onefile `
+            --noconsole `
+            --icon assets/box3d.ico `
             --name ${{ matrix.gui_build_name }} `
             --add-data "profiles;profiles" `
             --collect-all customtkinter `

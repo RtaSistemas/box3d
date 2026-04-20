@@ -12,7 +12,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 @lru_cache(maxsize=64)
@@ -69,19 +69,31 @@ def warp(
     canvas_w: int,
     canvas_h: int,
     dst_pts:  list[tuple[int, int]],
+    feather:  float = 1.2,
 ) -> Image.Image:
     """
     Perspective-warp *src* onto a transparent canvas.
+
+    *feather* controls the GaussianBlur radius applied to the alpha channel
+    after the transform to eliminate the hard binary edge (stair-step aliasing)
+    that PIL.Image.transform produces at quad boundaries.  Set to 0 to disable.
     """
     sw, sh  = src.size
     src_pts = [(0, 0), (sw, 0), (sw, sh), (0, sh)]
     coeffs  = solve_coefficients(src_pts, dst_pts)
-    return src.transform(
+    warped  = src.transform(
         (canvas_w, canvas_h),
         Image.PERSPECTIVE,
         coeffs,
         Image.BICUBIC,
     ).convert("RGBA")
+
+    if feather > 0:
+        r, g, b, a = warped.split()
+        a = a.filter(ImageFilter.GaussianBlur(radius=feather))
+        warped = Image.merge("RGBA", (r, g, b, a))
+
+    return warped
 
 
 def resize_for_fit(
@@ -114,7 +126,7 @@ def resize_for_fit(
 
     if mode == "stretch":
         if img.size != (target_w, target_h):
-            img = img.resize((target_w, target_h), Image.BICUBIC)
+            img = img.resize((target_w, target_h), Image.LANCZOS)
         return img
 
     iw, ih = img.size

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from core.models import Profile, RenderOptions
 from engine.blending   import (
@@ -104,9 +104,12 @@ def _composite(
     canvas       = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     canvas       = Image.alpha_composite(canvas, spine_warped)
 
-    # Step 2 — Cover warp
+    # Step 2 — Cover warp + mild unsharp mask (RGB only) to recover sharpness
+    #           lost during perspective resampling; alpha is left untouched so
+    #           the feathered edge from warp() is preserved.
     cover_src    = resize_for_fit(cover_img, geom.cover_w, geom.cover_h, geom.cover_fit)
     cover_warped = warp(cover_src, tw, th, geom.cover_quad.as_list())
+    cover_warped = _sharpen_rgb(cover_warped)
     canvas       = Image.alpha_composite(canvas, cover_warped)
 
     # Step 3 — Alpha-weighted Screen blend of the template
@@ -117,6 +120,19 @@ def _composite(
     canvas = dst_in(canvas, mask)
 
     return canvas
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _sharpen_rgb(img: Image.Image) -> Image.Image:
+    """Apply unsharp mask to RGB channels only; alpha is returned unchanged."""
+    r, g, b, a = img.split()
+    rgb = Image.merge("RGB", (r, g, b)).filter(
+        ImageFilter.UnsharpMask(radius=0.8, percent=40, threshold=2)
+    )
+    return Image.merge("RGBA", (*rgb.split(), a))
 
 
 # ---------------------------------------------------------------------------
