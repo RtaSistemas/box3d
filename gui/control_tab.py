@@ -26,6 +26,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from cli.bootstrap import _DATA, _PROFILES          # noqa: E402
+from cli.utils import auto_logo as _auto_logo        # noqa: E402
 from core.models import RenderOptions                # noqa: E402
 from core.pipeline import RenderPipeline             # noqa: E402
 from core.registry import ProfileRegistry            # noqa: E402
@@ -36,15 +37,6 @@ from .constants import (                             # noqa: E402
     _ACCENT, _ACCENT2, _WARN, _OK, _ERROR, _TEXT, _DIM,
     _FONT_MONO,
 )
-
-
-def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
-    """Return the first matching logo file (.png or .webp), or None."""
-    for ext in (".png", ".webp"):
-        p = assets_dir / f"{stem}{ext}"
-        if p.exists():
-            return p
-    return None
 
 
 class ControlTab:
@@ -79,6 +71,9 @@ class ControlTab:
         self._load_profiles()
         self._restore_config()
 
+        self._covers_var.trace_add("write", self._scan_marquee_coverage)
+        self._marquees_var.trace_add("write", self._scan_marquee_coverage)
+
     # =========================================================================
     # UI construction
     # =========================================================================
@@ -91,6 +86,18 @@ class ControlTab:
         self._cfg.grid_columnconfigure(0, weight=1)
 
         r = 0
+
+        # ── Render button (top of sidebar) ────────────────────────────────────
+        self._btn_render = ctk.CTkButton(
+            self._cfg, text="▶  START RENDER",
+            height=44, corner_radius=6,
+            fg_color="transparent", border_color=_ACCENT, border_width=1,
+            text_color=_ACCENT, hover_color=_PANEL2,
+            font=ctk.CTkFont(family=_FONT_MONO, size=13, weight="bold"),
+            command=self._start_render,
+        )
+        self._btn_render.grid(row=r, column=0, sticky="ew", padx=12, pady=(12, 8))
+        r += 1
 
         # ── Profile ──────────────────────────────────────────────────────────
         r = self._heading(self._cfg, "▸ PROFILE", r)
@@ -261,16 +268,6 @@ class ControlTab:
                 text_color=_TEXT, font=ctk.CTkFont(size=12),
             ).pack(anchor="w", pady=3)
 
-        # ── Render button ─────────────────────────────────────────────────────
-        self._btn_render = ctk.CTkButton(
-            self._cfg, text="▶  START RENDER",
-            height=44, corner_radius=6,
-            fg_color="transparent", border_color=_ACCENT, border_width=1,
-            text_color=_ACCENT, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=13, weight="bold"),
-            command=self._start_render,
-        )
-        self._btn_render.grid(row=r, column=0, sticky="ew", padx=12, pady=(4, 16))
 
     def _build_progress_panel(self, parent: ctk.CTkFrame) -> None:
         self._centre = ctk.CTkFrame(parent, fg_color=_BG, corner_radius=0)
@@ -353,6 +350,14 @@ class ControlTab:
         self._prev_img_lbl.grid_remove()
         r += 1
 
+        self._prev_err_lbl = ctk.CTkLabel(
+            self._right, text="",
+            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_ERROR,
+        )
+        self._prev_err_lbl.grid(row=r, column=0, padx=12, pady=(0, 4))
+        self._prev_err_lbl.grid_remove()
+        r += 1
+
         self._prev_stem_lbl = ctk.CTkLabel(
             self._right, text="",
             font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
@@ -368,6 +373,25 @@ class ControlTab:
             font=ctk.CTkFont(family=_FONT_MONO, size=10),
             command=self._open_output_folder,
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
+        r += 1
+
+        # ── Marquee coverage ─────────────────────────────────────────────────
+        r = self._heading(self._right, "▸ MARQUEE COVERAGE", r)
+
+        self._marq_summary_lbl = ctk.CTkLabel(
+            self._right, text="—",
+            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            justify="left",
+        )
+        self._marq_summary_lbl.grid(row=r, column=0, sticky="w", padx=12, pady=(0, 4))
+        r += 1
+
+        self._marq_detail_box = ctk.CTkTextbox(
+            self._right, height=80, fg_color=_PANEL2,
+            text_color=_DIM, font=ctk.CTkFont(family=_FONT_MONO, size=9),
+            corner_radius=4, state="disabled",
+        )
+        self._marq_detail_box.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
 
     # =========================================================================
     # Layout helpers
@@ -450,6 +474,7 @@ class ControlTab:
         self._prev_dims_lbl.configure(text=dims)
         if p:
             self._load_template_thumbnail(p.template_path)
+        self._scan_marquee_coverage()
 
     def _load_template_thumbnail(self, path: Path) -> None:
         if not path.is_file():
@@ -550,11 +575,12 @@ class ControlTab:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            workers = int(self._workers_var.get() or 4)
+            workers_raw = self._workers_var.get().strip()
+            workers = os.cpu_count() or 1 if workers_raw == "auto" else int(workers_raw or 4)
             blur    = int(self._blur_var.get()    or 20)
             darken  = int(self._darken_var.get()  or 180)
         except ValueError:
-            messagebox.showerror("Error", "Workers, blur, and darken must be integers.")
+            messagebox.showerror("Error", "Workers must be an integer or 'auto'.")
             return
 
         spine_raw = self._spine_source_var.get()
@@ -753,12 +779,87 @@ class ControlTab:
             self._prev_img_lbl.configure(image=ctk_img)
             self._prev_img_lbl._ctk_image = ctk_img  # prevent GC
             self._prev_idle_lbl.grid_remove()
+            self._prev_err_lbl.grid_remove()
             self._prev_img_lbl.grid()
             if stem:
                 self._prev_stem_lbl.configure(text=Path(stem).name)
             self._right.update_idletasks()
         except Exception as exc:
             self._log(f"⚠  Preview error: {exc}")
+            self._prev_img_lbl.grid_remove()
+            self._prev_err_lbl.configure(text=f"Preview unavailable:\n{exc}")
+            self._prev_err_lbl.grid()
+            self._right.update_idletasks()
+
+    # =========================================================================
+    # Marquee coverage
+    # =========================================================================
+
+    def _scan_marquee_coverage(self, *_) -> None:
+        """Check which covers have a matching marquee; update the coverage panel."""
+        covers_raw   = self._covers_var.get().strip()
+        marquees_raw = self._marquees_var.get().strip()
+
+        covers_dir   = Path(covers_raw)   if covers_raw   else None
+        marquees_dir = Path(marquees_raw) if marquees_raw else None
+
+        profile_name = self._profile_var.get()
+        profile      = self._profiles_map.get(profile_name)
+        fallback_dir = (profile.root / "assets") if profile else None
+
+        if not covers_dir or not covers_dir.is_dir():
+            self._marq_summary_lbl.configure(text="—  (set covers dir first)")
+            self._marq_detail_box.configure(state="normal")
+            self._marq_detail_box.delete("1.0", "end")
+            self._marq_detail_box.configure(state="disabled")
+            return
+
+        IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".bmp", ".tiff"}
+        covers = [p for p in covers_dir.rglob("*") if p.suffix.lower() in IMG_EXTS]
+
+        if not covers:
+            self._marq_summary_lbl.configure(text="0 covers found")
+            self._marq_detail_box.configure(state="normal")
+            self._marq_detail_box.delete("1.0", "end")
+            self._marq_detail_box.configure(state="disabled")
+            return
+
+        missing: list[str] = []
+        found = 0
+        for cover in covers:
+            stem = cover.stem
+            has_marquee = False
+            if marquees_dir and marquees_dir.is_dir():
+                for ext in (".png", ".webp", ".jpg", ".jpeg"):
+                    if (marquees_dir / f"{stem}{ext}").is_file():
+                        has_marquee = True
+                        break
+            if not has_marquee and fallback_dir and fallback_dir.is_dir():
+                for pat in ("logo_game.png", "logo_game.webp"):
+                    if (fallback_dir / pat).is_file():
+                        has_marquee = True
+                        break
+            if has_marquee:
+                found += 1
+            else:
+                missing.append(stem)
+
+        total = len(covers)
+        pct   = int(found / total * 100) if total else 0
+        color = _OK if pct == 100 else (_WARN if pct >= 50 else _ERROR)
+        self._marq_summary_lbl.configure(
+            text=f"{found}/{total} covered ({pct}%)", text_color=color,
+        )
+
+        self._marq_detail_box.configure(state="normal")
+        self._marq_detail_box.delete("1.0", "end")
+        if missing:
+            self._marq_detail_box.insert("end", "\n".join(f"✘ {s}" for s in missing[:20]))
+            if len(missing) > 20:
+                self._marq_detail_box.insert("end", f"\n… +{len(missing) - 20} more")
+        else:
+            self._marq_detail_box.insert("end", "✔ All covers have marquees")
+        self._marq_detail_box.configure(state="disabled")
 
     # =========================================================================
     # Config persistence (issue #27)

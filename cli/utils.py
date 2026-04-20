@@ -8,8 +8,18 @@ No side effects, no I/O at import time.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 log = logging.getLogger("box3d.cli")
+
+
+def auto_logo(assets_dir: Path, stem: str) -> Path | None:
+    """Return the first matching logo file (.png or .webp) in *assets_dir*, or None."""
+    for ext in (".png", ".webp"):
+        p = assets_dir / f"{stem}{ext}"
+        if p.exists():
+            return p
+    return None
 
 
 def parse_rgb_str(rgb_str: str) -> str | None:

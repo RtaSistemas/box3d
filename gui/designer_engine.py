@@ -11,10 +11,28 @@ Zero application state — two callbacks bridge engine ↔ UI:
 from __future__ import annotations
 
 import math
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 
-import tkinter as tk
+if TYPE_CHECKING:
+    import tkinter as tk
+
 from PIL import Image, ImageTk
+
+
+@runtime_checkable
+class CanvasProtocol(Protocol):
+    """Structural interface satisfied by tkinter.Canvas (and test doubles)."""
+
+    def create_image(self, x: float, y: float, **kwargs) -> int: ...
+    def create_rectangle(self, x0: float, y0: float, x1: float, y1: float, **kwargs) -> int: ...
+    def create_line(self, *coords, **kwargs) -> int: ...
+    def create_polygon(self, *coords, **kwargs) -> int: ...
+    def create_text(self, x: float, y: float, **kwargs) -> int: ...
+    def delete(self, *args) -> None: ...
+    def tag_bind(self, tag: str, sequence: str, func) -> None: ...
+    def bind(self, sequence: str, func, add: bool = False) -> None: ...
+    def winfo_width(self) -> int: ...
+    def winfo_height(self) -> int: ...
 
 from .constants import (
     _BG, _PANEL, _PANEL2, _BORDER, _TEXT, _DIM,
@@ -31,7 +49,7 @@ class DesignerEngine:
 
     def __init__(
         self,
-        canvas: tk.Canvas,
+        canvas: CanvasProtocol,
         on_change_cb: Callable | None = None,
         on_select_cb: Callable | None = None,
     ) -> None:
