@@ -66,34 +66,32 @@ class App(ctk.CTk):
         hdr = ctk.CTkFrame(self, fg_color=_PANEL, corner_radius=0, height=52)
         hdr.grid(row=0, column=0, sticky="ew")
         hdr.grid_propagate(False)
-        # col 0-1: logo  col 2: version  col 3: nav  col 4 (weight): spacer  col 5: status
-        hdr.grid_columnconfigure(4, weight=1)
+        hdr.grid_rowconfigure(0, weight=1)
+        # col 5 expands to push status to the right
+        hdr.grid_columnconfigure(5, weight=1)
 
         # ── Logo ──────────────────────────────────────────────────────────────
         ctk.CTkLabel(
             hdr, text="BOX",
             font=ctk.CTkFont(family=_FONT_MONO, size=20, weight="bold"),
             text_color=_ACCENT,
-        ).grid(row=0, column=0, padx=(16, 0), pady=0)
+        ).grid(row=0, column=0, padx=(16, 0))
 
         ctk.CTkLabel(
             hdr, text="3D",
             font=ctk.CTkFont(family=_FONT_MONO, size=20, weight="bold"),
             text_color=_ACCENT2,
-        ).grid(row=0, column=1, padx=(0, 10), pady=0)
+        ).grid(row=0, column=1, padx=(0, 8))
 
         ctk.CTkLabel(
             hdr, text=f"v{_VERSION}",
             font=ctk.CTkFont(family=_FONT_MONO, size=10),
             text_color=_DIM,
-        ).grid(row=0, column=2, padx=(0, 24), pady=0)
+        ).grid(row=0, column=2, padx=(0, 20))
 
-        # ── Tab nav buttons ───────────────────────────────────────────────────
-        nav = ctk.CTkFrame(hdr, fg_color="transparent")
-        nav.grid(row=0, column=3, sticky="ns")
-
+        # ── Tab nav buttons (direct children, same grid row) ──────────────────
         self._btn_ctrl = ctk.CTkButton(
-            nav, text="CONTROL",
+            hdr, text="CONTROL",
             width=96, height=52, corner_radius=0,
             fg_color="transparent", hover_color=_PANEL2,
             border_width=0,
@@ -101,10 +99,10 @@ class App(ctk.CTk):
             font=ctk.CTkFont(family=_FONT_MONO, size=11, weight="bold"),
             command=lambda: self._switch_tab("Control"),
         )
-        self._btn_ctrl.pack(side="left")
+        self._btn_ctrl.grid(row=0, column=3)
 
         self._btn_dsgn = ctk.CTkButton(
-            nav, text="DESIGNER PRO",
+            hdr, text="DESIGNER PRO",
             width=118, height=52, corner_radius=0,
             fg_color="transparent", hover_color=_PANEL2,
             border_width=0,
@@ -112,18 +110,18 @@ class App(ctk.CTk):
             font=ctk.CTkFont(family=_FONT_MONO, size=11),
             command=lambda: self._switch_tab("Designer"),
         )
-        self._btn_dsgn.pack(side="left")
+        self._btn_dsgn.grid(row=0, column=4)
 
-        # col 4 spacer (weight=1 above) keeps status pinned right
-        ctk.CTkFrame(hdr, fg_color="transparent").grid(row=0, column=4, sticky="ew")
+        # col 5 spacer pushes status to right
+        ctk.CTkFrame(hdr, fg_color="transparent", width=0).grid(row=0, column=5, sticky="ew")
 
-        # ── Status label ─────────────────────────────────────────────────────
+        # ── Status label ──────────────────────────────────────────────────────
         self._status_label = ctk.CTkLabel(
             hdr, text="● READY",
             font=ctk.CTkFont(family=_FONT_MONO, size=11),
             text_color=_OK,
         )
-        self._status_label.grid(row=0, column=5, padx=16, sticky="e")
+        self._status_label.grid(row=0, column=6, padx=16)
 
     # =========================================================================
     # Content area — two frames, one visible at a time
