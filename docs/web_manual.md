@@ -2,7 +2,7 @@
 
 <img width="1918" height="912" alt="Control Center" src="https://github.com/user-attachments/assets/c1570fb6-1d3f-4b13-9956-07e74008b318" />
 
-> **Version:** 2.1.0
+> **Version:** 3.0.0RC
 > **Interface:** Browser (`http://127.0.0.1:8000`)
 > **Requires:** `pip install box3d[web]`
 

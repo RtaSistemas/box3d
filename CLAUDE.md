@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**box3d** (v2.1.0) is a Python CLI application that renders photorealistic 3D box art from flat game cover images. It warps front cover + spine images onto box templates using perspective transforms, composites them with RGBA templates, and outputs WebP/PNG files.
+**box3d** (v3.0.0RC) is a Python CLI application that renders photorealistic 3D box art from flat game cover images. It warps front cover + spine images onto box templates using perspective transforms, composites them with RGBA templates, and outputs WebP/PNG files.
 
 - **Language:** Python 3.11+
 - **Runtime dependencies:** `Pillow >= 10.0`, `NumPy >= 1.24`

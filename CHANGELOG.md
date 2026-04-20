@@ -12,6 +12,67 @@ _No unreleased changes._
 
 ---
 
+## [3.0.0RC] — 2026-04
+
+### Added
+
+- **`gui/config.py`** — Shared config persistence layer (`data/gui_config.json`).
+  Both Control and Designer tabs load/save to the same flat JSON using merge-based
+  writes so neither tab overwrites the other's keys.
+- **Cancel render button** — `⏹ CANCEL` replaces the render button while a batch is
+  running; uses `threading.Event` + `InterruptedError` raised inside `on_progress` so
+  the pipeline exits cleanly without modifying `core/pipeline.py`.
+- **Profile reload button (↻)** — Reloads the profile list from disk without
+  restarting the application. Public `ControlTab.reload_profiles(select=)` method used
+  by the install-profile cross-tab flow.
+- **Designer canvas background picker** — `◉ Pick` button opens the OS native colour
+  chooser; canvas background changes in real time. Colour is persisted under
+  `dsn_canvas_bg` in the config file.
+- **"Usar no Control" (install profile) flow** — Designer installs a profile to
+  `profiles/<name>/`, then calls `App.reload_and_select_profile(name)` which reloads
+  the registry and switches to the Control tab automatically.
+- **`assets/box3d.ico`** — Multi-size (16–256 px) isometric cube icon for the Windows
+  GUI executable. Embedded via `--icon assets/box3d.ico` in `release.yml`.
+- **`tools/fix_template_alpha.py`** — Standalone PIL script that anti-aliases the alpha
+  channel of a template PNG (threshold → GaussianBlur). Supports glob for all profiles.
+- **"✦ Fix Template Alpha" button** in the Designer left panel; applies the same
+  algorithm in-place and reloads the result into the canvas.
+
+### Fixed
+
+- **PyInstaller relative-import crash** (`gui/app.py`) — Changed all three `from .x`
+  imports to absolute `from gui.x` imports so the frozen executable (where the module
+  has no parent package) loads correctly.
+- **GUI executable opens terminal/CMD** — Added `--noconsole` to both Linux and Windows
+  GUI PyInstaller build steps in `release.yml`.
+- **Live preview never showed images** — Two root causes fixed:
+  1. `core/pipeline.py`: `stem` was `cover_path.stem` (filename only), so covers inside
+     subdirectories produced output at `output/sub/game.webp` but the preview searched
+     for `output/game.webp`. Now `stem` is the full relative path from `covers_dir`.
+  2. `gui/control_tab.py`: `except Exception: pass` silently swallowed all failures;
+     errors now appear in the progress log.
+- **Designer config not persisted** — `DesignerTab.save_config()` and `_restore_config()`
+  added with `dsn_`-prefixed keys; `_restore_config` deferred via `after(200, ...)` to
+  ensure canvas is initialised before state is applied.
+- **`save_config()` overwrote the other tab's settings** — Both tabs now use load →
+  update → write (merge-based) to preserve keys belonging to the other tab.
+- **Logo rotation aliasing** — `spine_builder.py`: `Image.rotate()` now uses
+  `resample=Image.BICUBIC` (was defaulting to `NEAREST`, causing stair-step edges on
+  non-90° rotated logos).
+
+### Improved
+
+- **Warp alpha feathering** (`engine/perspective.py`) — `GaussianBlur(radius=1.2)` on
+  the alpha channel only after `Image.transform`; smooths the hard binary edge at quad
+  boundaries without touching RGB content.
+- **Cover resize LANCZOS** (`engine/perspective.py`) — `resize_for_fit` stretch mode
+  changed from `BICUBIC` to `LANCZOS` for better high-frequency detail preservation.
+- **Post-warp unsharp mask** (`engine/compositor.py`) — Mild `UnsharpMask(r=0.8, 40%,
+  threshold=2)` applied to RGB only after cover warp, recovering softness introduced by
+  perspective resampling; alpha is unchanged.
+
+---
+
 ## [2.1.0] — 2026-04
 
 ### Added
@@ -194,7 +255,8 @@ Version 1.x was a single-file script without plugin profiles, parallel rendering
 
 ---
 
-[Unreleased]: https://github.com/RtaSistemas/box3d/compare/v2.1.0...HEAD
-[2.1.0]:      https://github.com/RtaSistemas/box3d/compare/v2.0.0...v2.1.0
-[2.0.0]:      https://github.com/RtaSistemas/box3d/compare/v2.0.0-rc1...v2.0.0
-[2.0.0-rc1]:  https://github.com/RtaSistemas/box3d/releases/tag/v2.0.0-rc1
+[Unreleased]:  https://github.com/RtaSistemas/box3d/compare/v3.0.0RC...HEAD
+[3.0.0RC]:     https://github.com/RtaSistemas/box3d/compare/v2.1.0...v3.0.0RC
+[2.1.0]:       https://github.com/RtaSistemas/box3d/compare/v2.0.0...v2.1.0
+[2.0.0]:       https://github.com/RtaSistemas/box3d/compare/v2.0.0-rc1...v2.0.0
+[2.0.0-rc1]:   https://github.com/RtaSistemas/box3d/releases/tag/v2.0.0-rc1

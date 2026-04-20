@@ -57,7 +57,7 @@ def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
 app = FastAPI(
     title="Box3D Web Control Center",
     description="HTTP API for the Box3D 3D box-art rendering engine.",
-    version="1.0.0",
+    version="3.0.0RC",
 )
 
 # Allow browser clients running on any origin (dev-friendly default).
