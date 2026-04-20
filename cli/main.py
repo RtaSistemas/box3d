@@ -20,7 +20,7 @@ from cli.bootstrap import (
     _BUNDLE, _DATA, _PROFILES,
     _bootstrap_data_dir, _bootstrap_instructions,
 )
-from cli.utils import parse_rgb_str
+from cli.utils import auto_logo as _auto_logo, parse_rgb_str
 from core.models   import CoverResult, RenderOptions, RenderSummary
 from core.registry import ProfileRegistry, ProfileError
 
@@ -158,15 +158,6 @@ def _setup_logging(verbose: bool, log_file: str | None) -> None:
 # ---------------------------------------------------------------------------
 # Command Handlers
 # ---------------------------------------------------------------------------
-
-def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
-    """Find a logo file by stem (e.g. 'logo_top') in the assets directory."""
-    for ext in [".png", ".webp"]:
-        p = assets_dir / f"{stem}{ext}"
-        if p.exists():
-            return p
-    return None
-
 
 def print_summary(report: RenderSummary, output_dir: Path) -> None:
     """Print the render summary to the terminal, keeping the same format as before."""

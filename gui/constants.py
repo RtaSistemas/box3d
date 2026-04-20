@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import platform
 
-_VERSION   = "2.1.0"
+_VERSION   = "3.0.0RC"
 
 # ── Colour palette (mirrors web Control Center) ───────────────────────────────
 _BG      = "#0b0e14"

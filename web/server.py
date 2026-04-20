@@ -42,22 +42,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from cli.bootstrap import _BUNDLE, _PROFILES
+from cli.utils import auto_logo as _auto_logo
 from core.models import CoverResult, RenderOptions
 from core.registry import ProfileRegistry, ProfileError
-
-
-def _auto_logo(assets_dir: Path, stem: str) -> Path | None:
-    """Return the first matching logo file (.png or .webp), or None."""
-    for ext in (".png", ".webp"):
-        p = assets_dir / f"{stem}{ext}"
-        if p.exists():
-            return p
-    return None
 
 app = FastAPI(
     title="Box3D Web Control Center",
     description="HTTP API for the Box3D 3D box-art rendering engine.",
-    version="1.0.0",
+    version="3.0.0RC",
 )
 
 # Allow browser clients running on any origin (dev-friendly default).
