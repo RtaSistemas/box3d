@@ -146,8 +146,11 @@ jobs:
             --name ${{ matrix.gui_build_name }} \
             --add-data "profiles:profiles" \
             --collect-all customtkinter \
+            --collect-all PIL \
             --hidden-import tkinter \
             --hidden-import _tkinter \
+            --hidden-import PIL._tkinter_finder \
+            --hidden-import PIL.ImageTk \
             gui/app.py
 
       - name: Build GUI executable (Windows)
@@ -160,8 +163,11 @@ jobs:
             --name ${{ matrix.gui_build_name }} `
             --add-data "profiles;profiles" `
             --collect-all customtkinter `
+            --collect-all PIL `
             --hidden-import tkinter `
             --hidden-import _tkinter `
+            --hidden-import PIL._tkinter_finder `
+            --hidden-import PIL.ImageTk `
             gui/app.py
 
       - name: Upload CLI asset to GitHub Release

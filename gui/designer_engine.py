@@ -16,7 +16,15 @@ from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 if TYPE_CHECKING:
     import tkinter as tk
 
-from PIL import Image, ImageTk
+from PIL import Image
+
+try:
+    from PIL import ImageTk
+except ImportError as _itk_err:
+    raise ImportError(
+        "PIL.ImageTk is unavailable — tkinter may be missing from the bundle. "
+        f"Original error: {_itk_err}"
+    ) from _itk_err
 
 
 @runtime_checkable
