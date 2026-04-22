@@ -145,12 +145,25 @@ jobs:
             --noconsole \
             --name ${{ matrix.gui_build_name }} \
             --add-data "profiles:profiles" \
+            --add-data "cli/instructions_template.txt:cli" \
             --collect-all customtkinter \
             --collect-all PIL \
+            --collect-all numpy \
             --hidden-import tkinter \
             --hidden-import _tkinter \
+            --hidden-import tkinter.filedialog \
+            --hidden-import tkinter.messagebox \
+            --hidden-import tkinter.colorchooser \
             --hidden-import PIL._tkinter_finder \
             --hidden-import PIL.ImageTk \
+            --hidden-import PIL.ImageFilter \
+            --hidden-import core.pipeline \
+            --hidden-import core.models \
+            --hidden-import core.registry \
+            --hidden-import engine.compositor \
+            --hidden-import engine.perspective \
+            --hidden-import engine.blending \
+            --hidden-import engine.spine_builder \
             gui/app.py
 
       - name: Build GUI executable (Windows)
@@ -162,12 +175,25 @@ jobs:
             --icon assets/box3d.ico `
             --name ${{ matrix.gui_build_name }} `
             --add-data "profiles;profiles" `
+            --add-data "cli/instructions_template.txt;cli" `
             --collect-all customtkinter `
             --collect-all PIL `
+            --collect-all numpy `
             --hidden-import tkinter `
             --hidden-import _tkinter `
+            --hidden-import tkinter.filedialog `
+            --hidden-import tkinter.messagebox `
+            --hidden-import tkinter.colorchooser `
             --hidden-import PIL._tkinter_finder `
             --hidden-import PIL.ImageTk `
+            --hidden-import PIL.ImageFilter `
+            --hidden-import core.pipeline `
+            --hidden-import core.models `
+            --hidden-import core.registry `
+            --hidden-import engine.compositor `
+            --hidden-import engine.perspective `
+            --hidden-import engine.blending `
+            --hidden-import engine.spine_builder `
             gui/app.py
 
       - name: Upload CLI asset to GitHub Release
