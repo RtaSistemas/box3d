@@ -209,7 +209,7 @@ class ControlTab:
         rgb_frame.grid_columnconfigure(1, weight=1)
         r += 1
 
-        self._rgb_value_labels: dict[str, ctk.CTkLabel] = {}
+        self._rgb_entries: dict[str, ctk.CTkEntry] = {}
         for i, (ch, var, color) in enumerate([
             ("R", self._rgb_r, "#ff6b6b"),
             ("G", self._rgb_g, "#6bff8a"),
@@ -219,20 +219,43 @@ class ControlTab:
                 rgb_frame, text=ch, width=18,
                 font=ctk.CTkFont(family=_FONT_MONO, size=12, weight="bold"),
                 text_color=color,
-            ).grid(row=i, column=0, padx=(10, 4), pady=5, sticky="w")
+            ).grid(row=i, column=0, padx=(10, 4), pady=4, sticky="w")
             ctk.CTkSlider(
                 rgb_frame, variable=var,
                 from_=0.0, to=5.0, number_of_steps=100,
                 button_color=_ACCENT, button_hover_color=_ACCENT2,
                 progress_color=_ACCENT, fg_color=_BORDER,
                 command=lambda _, c=ch: self._on_rgb_slide(c),
-            ).grid(row=i, column=1, sticky="ew", padx=(0, 8), pady=5)
-            val_lbl = ctk.CTkLabel(
-                rgb_frame, text="1.00", width=42,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11), text_color=_DIM,
+            ).grid(row=i, column=1, sticky="ew", padx=(0, 6), pady=4)
+            entry = ctk.CTkEntry(
+                rgb_frame, width=52,
+                fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
+                font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                justify="center",
             )
-            val_lbl.grid(row=i, column=2, padx=(0, 10), pady=5)
-            self._rgb_value_labels[ch] = val_lbl
+            entry.insert(0, "1.00")
+            entry.grid(row=i, column=2, padx=(0, 10), pady=4)
+            entry.bind("<Return>",   lambda e, c=ch: self._on_rgb_entry(c))
+            entry.bind("<FocusOut>", lambda e, c=ch: self._on_rgb_entry(c))
+            self._rgb_entries[ch] = entry
+
+        # ── Colour swatch ─────────────────────────────────────────────────────
+        swatch_row = ctk.CTkFrame(rgb_frame, fg_color="transparent")
+        swatch_row.grid(row=3, column=0, columnspan=3, sticky="ew",
+                        padx=10, pady=(2, 8))
+        swatch_row.grid_columnconfigure(0, weight=1)
+
+        self._rgb_swatch = ctk.CTkFrame(
+            swatch_row, height=22, corner_radius=4, fg_color="#808080",
+        )
+        self._rgb_swatch.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._rgb_swatch.grid_propagate(False)
+
+        self._rgb_hex_lbl = ctk.CTkLabel(
+            swatch_row, text="#808080", width=58,
+            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+        )
+        self._rgb_hex_lbl.grid(row=0, column=1)
 
         ctk.CTkButton(
             self._cfg, text="↺ Reset to neutral",
@@ -494,12 +517,43 @@ class ControlTab:
 
     def _on_rgb_slide(self, channel: str) -> None:
         val = {"R": self._rgb_r, "G": self._rgb_g, "B": self._rgb_b}[channel].get()
-        self._rgb_value_labels[channel].configure(text=f"{val:.2f}")
+        entry = self._rgb_entries[channel]
+        entry.delete(0, "end")
+        entry.insert(0, f"{val:.2f}")
+        self._update_rgb_swatch()
+
+    def _on_rgb_entry(self, channel: str) -> None:
+        var = {"R": self._rgb_r, "G": self._rgb_g, "B": self._rgb_b}[channel]
+        entry = self._rgb_entries[channel]
+        try:
+            val = float(entry.get().replace(",", "."))
+            val = max(0.0, min(5.0, val))
+            var.set(val)
+            entry.delete(0, "end")
+            entry.insert(0, f"{val:.2f}")
+        except ValueError:
+            # Restore current slider value if input is invalid
+            entry.delete(0, "end")
+            entry.insert(0, f"{var.get():.2f}")
+        self._update_rgb_swatch()
+
+    def _update_rgb_swatch(self) -> None:
+        r, g, b = self._rgb_r.get(), self._rgb_g.get(), self._rgb_b.get()
+        # Map multiplier 1.0 → 128 (neutral gray), 0.0 → 0, 2.0 → 255
+        ri = min(255, int(r * 127.5))
+        gi = min(255, int(g * 127.5))
+        bi = min(255, int(b * 127.5))
+        hex_color = f"#{ri:02x}{gi:02x}{bi:02x}"
+        self._rgb_swatch.configure(fg_color=hex_color)
+        self._rgb_hex_lbl.configure(text=hex_color.upper())
 
     def _reset_rgb(self) -> None:
         for ch, var in [("R", self._rgb_r), ("G", self._rgb_g), ("B", self._rgb_b)]:
             var.set(1.0)
-            self._rgb_value_labels[ch].configure(text="1.00")
+            entry = self._rgb_entries[ch]
+            entry.delete(0, "end")
+            entry.insert(0, "1.00")
+        self._update_rgb_swatch()
 
     def _get_rgb_matrix(self) -> str | None:
         r, g, b = self._rgb_r.get(), self._rgb_g.get(), self._rgb_b.get()
@@ -890,14 +944,17 @@ class ControlTab:
             if (v := cfg.get(key)) is not None:
                 var.set(str(v))
 
-        for key, var, label in [
+        for key, var, ch in [
             ("rgb_r", self._rgb_r, "R"),
             ("rgb_g", self._rgb_g, "G"),
             ("rgb_b", self._rgb_b, "B"),
         ]:
             if (v := cfg.get(key)) is not None:
                 var.set(float(v))
-                self._rgb_value_labels[label].configure(text=f"{float(v):.2f}")
+                entry = self._rgb_entries[ch]
+                entry.delete(0, "end")
+                entry.insert(0, f"{float(v):.2f}")
+        self._update_rgb_swatch()
 
         for key, var in [
             ("skip_existing", self._skip_var),
