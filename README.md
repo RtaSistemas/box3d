@@ -10,6 +10,8 @@
 
 <img width="1914" height="961" alt="clip1" src="https://github.com/user-attachments/assets/19364670-138c-4d64-afe1-f70c5c0c50ac" />
 
+---
+
 ```
 covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 ```
