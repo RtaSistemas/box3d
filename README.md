@@ -189,6 +189,8 @@ box3d [global options] <command> [command options]
 
 Renders all cover images in the input directory using the specified profile.
 
+<img width="1914" height="964" alt="clip3" src="https://github.com/user-attachments/assets/b9c7f211-365f-4e65-a81d-713164b451bc" />
+
 ```
 box3d render --profile <name> [options]
 ```
@@ -266,8 +268,6 @@ box3d serve --host 0.0.0.0 --port 9000  # expose on LAN
 
 Opens Box3D Designer Pro in the default browser.
 
-<img width="1914" height="965" alt="clip2" src="https://github.com/user-attachments/assets/7744c6dd-c484-4285-8e53-3163580d6d78" />
-
 ```bash
 box3d designer
 ```
@@ -279,7 +279,6 @@ The Designer Pro is also reachable at `http://127.0.0.1:8000/designer/` when the
 ## Web Control Center
 
 A browser-based graphical interface for running render jobs without the CLI.
-<img width="1920" height="1032" alt="Designer" src="https://github.com/user-attachments/assets/fb13da2b-37b2-48ad-b25a-68b42da564b6" />
 
 ### Start
 
@@ -424,6 +423,8 @@ transparent canvas  (template_size)
 **Alpha-weighted Screen blend (step 3):** Standard Screen blend washes out dark covers because near-transparent template pixels still contribute luminance. Weighting by `template_alpha / 255` means zero contribution where the template is fully transparent — the correct physical model.
 
 **Union silhouette for DstIn (step 4):** The MVS profile uses a mostly-transparent template. Keying DstIn only on template alpha would erase the cover face. The union (`max`) of template alpha and canvas alpha is used as the clip mask, preserving the cover regardless of template transparency.
+
+<img width="1914" height="971" alt="clip4" src="https://github.com/user-attachments/assets/e70a2344-274c-4abb-bdad-47725e501e44" />
 
 ---
 
@@ -580,6 +581,8 @@ On first launch, the executable creates the entire working tree next to itself:
 
 ## Box3D Designer Pro
 
+<img width="1914" height="965" alt="clip2" src="https://github.com/user-attachments/assets/202f73a0-95c5-4768-a949-bf1c921b171a" />
+
 A visual editor for authoring and editing profiles. Available in two forms:
 
 **Browser version** (`tools/box3d_designer_pro/index.html`)
@@ -594,6 +597,8 @@ A visual editor for authoring and editing profiles. Available in two forms:
 box3d designer          # opens browser Designer Pro
 box3d-gui               # opens desktop app (select Designer tab)
 ```
+
+<img width="1920" height="1032" alt="Designer" src="https://github.com/user-attachments/assets/5915477c-8799-47eb-ae32-84875bd7961f" />
 
 ---
 
