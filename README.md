@@ -8,6 +8,8 @@
 
 `box3d` takes flat front-cover images and renders them as photorealistic 3D boxes: warped spine, logo overlays, baked shading — ready for EmulationStation, Pegasus, or any launcher that supports boxart.
 
+<img width="1914" height="961" alt="clip1" src="https://github.com/user-attachments/assets/19364670-138c-4d64-afe1-f70c5c0c50ac" />
+
 ```
 covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 ```
@@ -84,19 +86,13 @@ pip install -e .            # Pillow + NumPy only — full CLI
 
 <img width="1918" height="912" alt="Control Center" src="https://github.com/user-attachments/assets/b166634a-9532-4d87-bf92-008f9a301eda" />
 
-<img width="520" height="638" alt="result" src="https://github.com/user-attachments/assets/bb01f8db-8907-4153-a645-ea2a9c97a249" />
-
 ```bash
 pip install -e ".[web]"     # adds FastAPI + Uvicorn + httpx
 ```
 
 ### With desktop GUI
 
-<img width="1920" height="1032" alt="Control" src="https://github.com/user-attachments/assets/05e42e2c-9b6b-4b8f-950a-6df89ec94345" />
-
-<img width="1920" height="1032" alt="Designer" src="https://github.com/user-attachments/assets/2f5eb802-444e-43d8-9be8-267c8e0ed49d" />
-
-
+<img width="1920" height="1032" alt="Control" src="https://github.com/user-attachments/assets/a2c54c26-f69a-423e-8413-ca9cc4eca101" />
 
 ```bash
 pip install -e ".[gui]"     # adds CustomTkinter
@@ -159,8 +155,6 @@ box3d-gui
 The GUI has two tabs:
 - **Control** — same functionality as the web Control Center (profile selector, paths, render options, live preview)
 - **Designer** — visual profile editor (drag quads, edit spine slots, import/export `profile.json`)
-
-<img width="1914" height="920" alt="box3d_gui" src="https://github.com/user-attachments/assets/881a3da2-3704-4fae-810f-e29e8ac105f8" />
 
 
 ### Dry-run (validate without rendering)
@@ -269,7 +263,8 @@ box3d serve --host 0.0.0.0 --port 9000  # expose on LAN
 ### `designer`
 
 Opens Box3D Designer Pro in the default browser.
-<img width="1918" height="860" alt="designer" src="https://github.com/user-attachments/assets/2ccc36bf-9b48-4e8a-9085-26a8599f9b07" />
+
+<img width="1914" height="965" alt="clip2" src="https://github.com/user-attachments/assets/7744c6dd-c484-4285-8e53-3163580d6d78" />
 
 ```bash
 box3d designer
@@ -282,6 +277,7 @@ The Designer Pro is also reachable at `http://127.0.0.1:8000/designer/` when the
 ## Web Control Center
 
 A browser-based graphical interface for running render jobs without the CLI.
+<img width="1920" height="1032" alt="Designer" src="https://github.com/user-attachments/assets/fb13da2b-37b2-48ad-b25a-68b42da564b6" />
 
 ### Start
 
