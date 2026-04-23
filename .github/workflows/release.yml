@@ -63,7 +63,8 @@ jobs:
             build_name: box3d-windows-x64
             artifact_path: dist/box3d-windows-x64.exe
             gui_build_name: box3d-gui-windows-x64
-            gui_artifact_path: dist/box3d-gui-windows-x64.exe
+            # GUI uses --onedir; the folder is zipped for distribution.
+            gui_artifact_path: dist/box3d-gui-windows-x64.zip
           - os: ubuntu-latest
             build_name: box3d-linux-x64
             artifact_path: dist/box3d-linux-x64
@@ -168,9 +169,12 @@ jobs:
 
       - name: Build GUI executable (Windows)
         if: matrix.os == 'windows-latest'
+        # --onedir avoids the per-launch extraction to %TEMP% that causes
+        # 10-20 s startup delays on Windows (Defender scans extracted files).
+        # The folder is zipped in the next step for single-archive distribution.
         run: |
           pyinstaller `
-            --onefile `
+            --onedir `
             --noconsole `
             --icon assets/box3d.ico `
             --name ${{ matrix.gui_build_name }} `
@@ -195,6 +199,15 @@ jobs:
             --hidden-import engine.blending `
             --hidden-import engine.spine_builder `
             gui/app.py
+
+      - name: Zip Windows GUI folder
+        if: matrix.os == 'windows-latest'
+        # Zip the entire onedir output so the release has a single download.
+        # Extracts to box3d-gui-windows-x64\ — run the .exe inside that folder.
+        run: |
+          Compress-Archive `
+            -Path dist\${{ matrix.gui_build_name }} `
+            -DestinationPath dist\${{ matrix.gui_build_name }}.zip
 
       - name: Upload CLI asset to GitHub Release
         uses: softprops/action-gh-release@v2
