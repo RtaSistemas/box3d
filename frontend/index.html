@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PMAS — Dashboard de Timesheet</title>
+  <!-- Apache ECharts via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: 0.02em; }
+    header span.badge {
+      background: #3b82f6;
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+
+    .card h2 { font-size: 0.95rem; font-weight: 600; color: #94a3b8; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Upload area */
+    .upload-zone {
+      border: 2px dashed #475569;
+      border-radius: 0.5rem;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .upload-zone:hover { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+    .upload-zone input[type="file"] { display: none; }
+    .upload-zone p { color: #64748b; font-size: 0.9rem; margin-top: 0.5rem; }
+    .upload-zone .icon { font-size: 2rem; }
+
+    /* Controls row */
+    .controls {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 200px; }
+    .field label { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
+
+    select, button {
+      height: 2.5rem;
+      border-radius: 0.4rem;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      padding: 0 0.75rem;
+      cursor: pointer;
+    }
+    select { width: 100%; }
+    button {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      font-weight: 600;
+      padding: 0 1.25rem;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    button:hover { background: #2563eb; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* Notifications */
+    #notification {
+      padding: 0.75rem 1rem;
+      border-radius: 0.4rem;
+      font-size: 0.875rem;
+      display: none;
+    }
+    #notification.success { background: rgba(34,197,94,0.15); border: 1px solid #16a34a; color: #4ade80; }
+    #notification.error   { background: rgba(239,68,68,0.15);  border: 1px solid #dc2626; color: #f87171; }
+    #notification.info    { background: rgba(59,130,246,0.15); border: 1px solid #2563eb; color: #93c5fd; }
+
+    /* Chart container */
+    #chart { width: 100%; height: 480px; }
+
+    /* Quarantine warning badge */
+    .quarantine-tag {
+      display: inline-block;
+      background: rgba(251,191,36,0.15);
+      border: 1px solid #d97706;
+      color: #fbbf24;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>PMAS</h1>
+  <span class="badge">Timesheet</span>
+</header>
+
+<main>
+
+  <!-- Upload card -->
+  <div class="card">
+    <h2>Importar Timesheet</h2>
+    <label class="upload-zone" id="uploadZone">
+      <input type="file" id="csvInput" accept=".csv" />
+      <div class="icon">📂</div>
+      <strong>Clique para selecionar um arquivo CSV</strong>
+      <p>ou arraste e solte aqui</p>
+    </label>
+    <div id="notification"></div>
+  </div>
+
+  <!-- Controls card -->
+  <div class="card">
+    <h2>Filtros</h2>
+    <div class="controls">
+      <div class="field">
+        <label for="cycleSelect">Ciclo</label>
+        <select id="cycleSelect">
+          <option value="">— Selecione um ciclo —</option>
+        </select>
+      </div>
+      <button id="loadBtn" disabled>Carregar Dashboard</button>
+    </div>
+  </div>
+
+  <!-- Chart card -->
+  <div class="card">
+    <h2>Distribuição de Horas por Colaborador</h2>
+    <div id="chart"></div>
+  </div>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
