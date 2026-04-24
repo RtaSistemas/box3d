@@ -40,3 +40,6 @@ Thumbs.db
 
 # Generated on first run (user may edit or delete freely)
 instructions.txt
+
+# PMAS — SQLite database (generated at runtime, not versioned)
+pmas.db
