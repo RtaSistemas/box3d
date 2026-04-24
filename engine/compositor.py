@@ -115,8 +115,12 @@ def _composite(
     # Step 3 — Alpha-weighted Screen blend of the template
     canvas = alpha_weighted_screen(canvas, colored_template)
 
-    # Step 4 — DstIn: clip to the union silhouette
+    # Step 4 — DstIn: clip to the union silhouette.
+    # Feather the mask by 1 px to anti-alias the hard binary alpha that most
+    # template PNGs have at their outer boundary.  Without this, the template
+    # outline produces a visible stair-step (aliased) edge in the final render.
     mask   = build_silhouette_mask(spine_warped, cover_warped, template)
+    mask   = mask.filter(ImageFilter.GaussianBlur(radius=1.0))
     canvas = dst_in(canvas, mask)
 
     return canvas
@@ -127,10 +131,15 @@ def _composite(
 # ---------------------------------------------------------------------------
 
 def _sharpen_rgb(img: Image.Image) -> Image.Image:
-    """Apply unsharp mask to RGB channels only; alpha is returned unchanged."""
+    """Apply unsharp mask to RGB channels only; alpha is returned unchanged.
+
+    Radius and percent are kept conservative: a stronger USM amplifies the
+    contrast discontinuity at the feathered warp edge, making the stair-step
+    pattern more visible even though the alpha itself is smooth.
+    """
     r, g, b, a = img.split()
     rgb = Image.merge("RGB", (r, g, b)).filter(
-        ImageFilter.UnsharpMask(radius=0.8, percent=40, threshold=2)
+        ImageFilter.UnsharpMask(radius=0.6, percent=25, threshold=3)
     )
     return Image.merge("RGBA", (*rgb.split(), a))
 
