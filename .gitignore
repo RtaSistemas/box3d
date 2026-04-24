@@ -40,3 +40,7 @@ Thumbs.db
 
 # Generated on first run (user may edit or delete freely)
 instructions.txt
+
+# Test coverage artefacts
+.coverage
+coverage.json

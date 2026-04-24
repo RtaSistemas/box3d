@@ -492,11 +492,10 @@ profiles/ps2/
   "spine_source": "left",
   "cover_fit": "stretch",
   "spine_layout": {
-    "game":   { "max_w": 45, "max_h": 240, "center_y": 350 },
-    "top":    { "max_w": 45, "max_h":  90, "center_y": 110 },
-    "bottom": { "max_w": 45, "max_h":  60, "center_y": 620 },
-    "logo_alpha": 0.85,
-    "rotate_logos": true
+    "game":   { "max_w": 45, "max_h": 240, "center_y": 350, "rotate": -90 },
+    "top":    { "max_w": 45, "max_h":  90, "center_y": 110, "rotate": -90 },
+    "bottom": { "max_w": 45, "max_h":  60, "center_y": 620, "rotate": -90 },
+    "logo_alpha": 0.85
   }
 }
 ```
