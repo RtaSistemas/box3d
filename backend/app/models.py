@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
-
 from sqlalchemy import (
     Boolean,
     Column,
@@ -45,7 +43,8 @@ class TimesheetRecord(Base):
     collaborator_id = Column(Integer, ForeignKey("collaborator.id"), nullable=False)
     cycle_id = Column(Integer, ForeignKey("cycle.id"), nullable=False)
     record_date = Column(Date, nullable=False)
-    pep_wbs = Column(String, nullable=True)
+    pep_wbs = Column(String, nullable=True, index=True)          # Código PEP (ex: 60OP-03333)
+    pep_description = Column(String, nullable=True, index=True)  # PEP descritivo (ex: COPEL-D | OMS)
     normal_hours = Column(Float, default=0.0, nullable=False)
     extra_hours = Column(Float, default=0.0, nullable=False)
     standby_hours = Column(Float, default=0.0, nullable=False)
