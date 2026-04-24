@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.database import get_db, init_db
 from backend.app.models import Collaborator, Cycle, TimesheetRecord
-from backend.app.services.ingestion import ingest_csv
+from backend.app.services.ingestion import ingest_file
 
 log = logging.getLogger(__name__)
 
@@ -53,12 +53,13 @@ def upload_timesheet(file: UploadFile, db: DbSession):
     Recebe um arquivo CSV de timesheet e persiste os registros.
     Ciclos de Quarentena são criados automaticamente para datas órfãs.
     """
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Apenas arquivos .csv são aceitos.")
+    fname = file.filename or ""
+    if not any(fname.lower().endswith(ext) for ext in (".csv", ".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Apenas arquivos .csv ou .xlsx são aceitos.")
 
     contents = file.file.read()
     try:
-        summary = ingest_csv(contents, db)
+        summary = ingest_file(contents, fname, db)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

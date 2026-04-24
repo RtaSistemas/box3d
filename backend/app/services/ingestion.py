@@ -11,23 +11,26 @@ from backend.app.models import Collaborator, Cycle, TimesheetRecord
 
 log = logging.getLogger(__name__)
 
-# Expected CSV column names (case-insensitive matching applied at load time)
+# Supported column names (the file may have any of these for the PEP/WBS field)
 _COL_COLLABORATOR = "Colaborador"
 _COL_DATE = "Data"
 _COL_HOURS = "Horas totais (decimal)"
 _COL_EXTRA = "Hora extra"
 _COL_STANDBY = "Hora sobreaviso"
-_COL_PEP = "PEP/WBS"
+# PEP/WBS: accept "Código PEP" (XLSX export) or legacy "PEP/WBS" (CSV)
+_COL_PEP_CANDIDATES = ["Código PEP", "PEP/WBS", "PEP"]
 
-# The CSV column "Ciclo" is intentionally ignored per the Golden Rule.
+# The column "Ciclo" is intentionally ignored per the Golden Rule.
 
 
-def ingest_csv(file_bytes: bytes, db: Session) -> dict:
+def ingest_file(file_bytes: bytes, filename: str, db: Session) -> dict:
     """
-    Parse a timesheet CSV, resolve collaborators and cycles, and persist
-    TimesheetRecord rows.  Returns a summary dict with counts.
+    Parse a timesheet file (CSV or XLSX), resolve collaborators and cycles,
+    and persist TimesheetRecord rows.  Returns a summary dict with counts.
     """
-    df = _load_dataframe(file_bytes)
+    df = _load_dataframe(file_bytes, filename)
+    pep_col = next((c for c in _COL_PEP_CANDIDATES if c in df.columns), None)
+
     inserted = 0
     quarantine_cycles_created = 0
 
@@ -53,7 +56,7 @@ def ingest_csv(file_bytes: bytes, db: Session) -> dict:
         else:
             normal_h = total_h
 
-        pep = str(row[_COL_PEP]).strip() if _COL_PEP in row.index else None
+        pep = str(row[pep_col]).strip() if pep_col else None
 
         record = TimesheetRecord(
             collaborator_id=collab.id,
@@ -79,18 +82,27 @@ def ingest_csv(file_bytes: bytes, db: Session) -> dict:
     }
 
 
+# Keep backward-compat alias
+def ingest_csv(file_bytes: bytes, db: Session) -> dict:
+    return ingest_file(file_bytes, "file.csv", db)
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _load_dataframe(file_bytes: bytes) -> pd.DataFrame:
-    df = pd.read_csv(BytesIO(file_bytes))
-    # Normalise column names: strip surrounding whitespace
+def _load_dataframe(file_bytes: bytes, filename: str) -> pd.DataFrame:
+    name_lower = filename.lower()
+    if name_lower.endswith(".xlsx") or name_lower.endswith(".xls"):
+        df = pd.read_excel(BytesIO(file_bytes))
+    else:
+        df = pd.read_csv(BytesIO(file_bytes))
+
     df.columns = [c.strip() for c in df.columns]
     required = {_COL_COLLABORATOR, _COL_DATE, _COL_HOURS}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(f"Colunas obrigatórias ausentes no CSV: {missing}")
+        raise ValueError(f"Colunas obrigatórias ausentes: {missing}")
     return df
 
 

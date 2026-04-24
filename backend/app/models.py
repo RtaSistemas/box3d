@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, List, Optional
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -21,9 +23,7 @@ class Collaborator(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
 
-    records: list[TimesheetRecord] = relationship(
-        "TimesheetRecord", back_populates="collaborator"
-    )
+    records = relationship("TimesheetRecord", back_populates="collaborator")
 
 
 class Cycle(Base):
@@ -33,12 +33,9 @@ class Cycle(Base):
     name = Column(String, nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
-    # True for auto-generated quarantine cycles
     is_quarantine = Column(Boolean, default=False, nullable=False)
 
-    records: list[TimesheetRecord] = relationship(
-        "TimesheetRecord", back_populates="cycle"
-    )
+    records = relationship("TimesheetRecord", back_populates="cycle")
 
 
 class TimesheetRecord(Base):
@@ -53,13 +50,10 @@ class TimesheetRecord(Base):
     extra_hours = Column(Float, default=0.0, nullable=False)
     standby_hours = Column(Float, default=0.0, nullable=False)
 
-    collaborator: Collaborator = relationship(
-        "Collaborator", back_populates="records"
-    )
-    cycle: Cycle = relationship("Cycle", back_populates="records")
+    collaborator = relationship("Collaborator", back_populates="records")
+    cycle = relationship("Cycle", back_populates="records")
 
 
-# Composite index to speed up dashboard GROUP BY queries
 Index(
     "ix_timesheet_cycle_collaborator",
     TimesheetRecord.cycle_id,
