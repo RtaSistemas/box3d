@@ -39,4 +39,8 @@ tests/visual/diff/
 Thumbs.db
 
 # Generated on first run (user may edit or delete freely)
-instructions.txt.coverage\ncoverage.json
+instructions.txt
+
+# Test coverage artefacts
+.coverage
+coverage.json
