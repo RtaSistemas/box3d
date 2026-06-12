@@ -40,6 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from typing import Annotated, Literal
 
 from cli.bootstrap import _BUNDLE, _PROFILES
 from cli.utils import auto_logo as _auto_logo
@@ -81,21 +82,21 @@ class RenderRequest(BaseModel):
     output_dir:   str  = Field(...,  description="Absolute path to output directory")
     marquees_dir: str | None = Field(None, description="Path to marquees directory (optional)")
     workers:      int  = Field(4,    ge=1, description="Parallel worker threads")
-    blur_radius:  int  = Field(20,   ge=0, description="Spine background blur radius")
+    blur_radius:  int  = Field(20,   ge=0, le=100, description="Spine background blur radius (0-100)")
     darken_alpha: int  = Field(180,  ge=0, le=255, description="Spine dark overlay alpha")
-    cover_fit:    str | None = Field(None, description="stretch | fit | crop")
+    cover_fit:    Literal["stretch", "fit", "crop"] | None = Field(None, description="Cover fit mode")
     spine_source: str | None = Field(
         None,
         description="Spine background sample position: left | right | center (None = profile default)",
         pattern=r"^(left|right|center)$",
     )
-    output_format: str = Field("webp", description="webp | png")
+    output_format: Literal["webp", "png"] = Field("webp", description="Output image format")
     skip_existing: bool = Field(False)
     dry_run:       bool = Field(False)
     no_logos:      bool = Field(False)
-    rgb_matrix:   list[float] | None = Field(
-        None, description="[r, g, b] channel scale factors (0.0–5.0)", min_length=3, max_length=3
-    )
+    rgb_matrix:   Annotated[
+        list[Annotated[float, Field(ge=0.0, le=5.0)]], Field(min_length=3, max_length=3)
+    ] | None = Field(None, description="[r, g, b] channel scale factors (0.0–5.0)")
 
 
 class OpenFolderRequest(BaseModel):
@@ -212,21 +213,20 @@ async def start_render(
     # --- RGB matrix ---
     # RenderOptions.rgb_matrix expects the diagonal matrix string consumed by
     # engine/blending.apply_color_matrix() — e.g. "1.1 0 0  0 1.0 0  0 0 0.9".
-    # Payload sends [r, g, b] floats; convert here (same as cli/utils.parse_rgb_str).
+    # Payload sends [r, g, b] floats validated by Pydantic (ge=0.0, le=5.0 each).
     rgb_matrix_str: str | None = None
     if payload.rgb_matrix and len(payload.rgb_matrix) == 3:
         r, g, b = payload.rgb_matrix
-        if r >= 0 and g >= 0 and b >= 0:
-            rgb_matrix_str = f"{r} 0 0  0 {g} 0  0 0 {b}"
+        rgb_matrix_str = f"{r} 0 0  0 {g} 0  0 0 {b}"
 
     # --- Options ---
     options = RenderOptions(
         blur_radius   = payload.blur_radius,
         darken_alpha  = payload.darken_alpha,
         rgb_matrix    = rgb_matrix_str,
-        cover_fit     = payload.cover_fit,    # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
-        spine_source  = payload.spine_source, # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
-        output_format = payload.output_format,# type: ignore[arg-type]  (Literal validated by Pydantic enum)
+        cover_fit     = payload.cover_fit,
+        spine_source  = payload.spine_source,  # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
+        output_format = payload.output_format,
         skip_existing = payload.skip_existing,
         workers       = payload.workers,
         dry_run       = payload.dry_run,

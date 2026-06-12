@@ -33,8 +33,8 @@ def parse_rgb_str(rgb_str: str) -> str | None:
             raise ValueError(f"expected 3 values, got {len(parts)}")
         r, g, b = parts
         for label, val in (("R", r), ("G", g), ("B", b)):
-            if val < 0:
-                raise ValueError(f"channel {label} must be >= 0")
+            if not (0.0 <= val <= 5.0):
+                raise ValueError(f"channel {label} must be in [0.0, 5.0]")
         return f"{r} 0 0  0 {g} 0  0 0 {b}"
     except Exception:
         return None

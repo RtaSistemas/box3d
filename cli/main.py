@@ -80,7 +80,7 @@ Examples:
     render_p.add_argument("--output", "-o", type=str,
                           help="Output directory (default: <data>/output/converted)")
     render_p.add_argument("--blur-radius", "-b", type=int, default=20,
-                          help="Spine background blur radius (>= 0)")
+                          help="Spine background blur radius (0-100)")
     render_p.add_argument("--darken", "-d", type=int, default=180,
                           help="Spine dark overlay alpha (0-255)")
     render_p.add_argument("--rgb", "-R", type=str,
@@ -199,8 +199,8 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         log.error("--darken %d is out of bounds (0-255).", args.darken)
         return 1
 
-    if args.blur_radius < 0:
-        log.error("--blur-radius %d must be >= 0.", args.blur_radius)
+    if not (0 <= args.blur_radius <= 100):
+        log.error("--blur-radius %d is out of bounds (0-100).", args.blur_radius)
         return 1
 
     rgb_matrix = parse_rgb_str(args.rgb) if args.rgb else None

@@ -1540,3 +1540,47 @@ class TestWarpBackend:
         assert ep._VIPS_KERNEL in ("lbb", "nohalo", "bicubic", "bilinear"), (
             f"Unexpected _VIPS_KERNEL value: {ep._VIPS_KERNEL!r}"
         )
+
+
+# ===========================================================================
+# Input validation (F-04, F-05, F-08 remediation coverage)
+# ===========================================================================
+
+class TestInputValidation:
+
+    def test_parse_rgb_str_rejects_negative_channel(self):
+        """parse_rgb_str must return None for negative channel values."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("-0.1,1.0,1.0") is None
+
+    def test_parse_rgb_str_rejects_value_above_5(self):
+        """parse_rgb_str must return None for channel values above 5.0."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("6.0,1.0,1.0") is None
+
+    def test_parse_rgb_str_accepts_boundary_values(self):
+        """parse_rgb_str must accept exactly 0.0 and 5.0."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("0.0,5.0,1.0") is not None
+
+    def test_parse_rgb_str_rejects_wrong_count(self):
+        """parse_rgb_str must return None for fewer or more than 3 values."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("1.0,1.0") is None
+        assert parse_rgb_str("1.0,1.0,1.0,1.0") is None
+
+    def test_parse_rgb_str_valid_returns_matrix_string(self):
+        """parse_rgb_str with valid input must return the diagonal matrix string."""
+        from cli.utils import parse_rgb_str
+        result = parse_rgb_str("1.1,1.0,0.9")
+        assert result is not None
+        assert "1.1" in result and "1.0" in result and "0.9" in result
+
+    def test_version_is_consistent(self):
+        """core/version.__version__ must match the string in bootstrap._VERSION."""
+        from core.version import __version__
+        from cli.bootstrap import _VERSION
+        assert __version__ == _VERSION, (
+            f"Version mismatch: core.version={__version__!r}, "
+            f"bootstrap._VERSION={_VERSION!r}"
+        )
