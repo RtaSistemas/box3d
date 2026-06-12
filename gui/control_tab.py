@@ -696,8 +696,10 @@ class ControlTab:
         self._elapsed_lbl.configure(text="")
         self._clear_log()
 
+        from engine.perspective import WARP_BACKEND_LABEL
         profile = self._profiles_map[profile_name]
         self._log(f"▶  Profile: {profile_name}  |  Covers: {covers_dir}")
+        self._log(f"🔧 Warp: {WARP_BACKEND_LABEL}")
         self._log("─" * 52)
 
         threading.Thread(

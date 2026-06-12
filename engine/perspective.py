@@ -68,11 +68,11 @@ log = logging.getLogger(__name__)
 try:
     import pyvips as _pyvips  # noqa: F401 — keep reference alive
     _PYVIPS_AVAILABLE = True
-    log.debug("pyvips %s available — using accelerated mapim warp", _pyvips.__version__)
+    log.info("pyvips %s available — using accelerated mapim warp", _pyvips.__version__)
 except Exception:
     _pyvips = None            # type: ignore[assignment]
     _PYVIPS_AVAILABLE = False
-    log.debug("pyvips not available — falling back to PIL BICUBIC warp")
+    log.info("pyvips not available — falling back to PIL BICUBIC warp")
 
 # Warp kernel used by the pyvips path.
 # Supported values: 'lbb' | 'nohalo' | 'bicubic' | 'bilinear'
@@ -91,6 +91,15 @@ if _VIPS_KERNEL not in _VALID_VIPS_KERNELS:
         f"BOX3D_WARP_BACKEND={_VIPS_KERNEL!r} is not a valid pyvips kernel. "
         f"Valid values: {sorted(_VALID_VIPS_KERNELS)}"
     )
+
+# Human-readable backend label exposed to pipeline and GUI for user-visible logging.
+if _PYVIPS_AVAILABLE:
+    WARP_BACKEND_LABEL: str = (
+        f"pyvips {_pyvips.__version__} — kernel={_VIPS_KERNEL} "  # type: ignore[union-attr]
+        "(smooth anti-aliased warp)"
+    )
+else:
+    WARP_BACKEND_LABEL = "PIL BICUBIC fallback — pyvips unavailable (expect jagged edges)"
 
 # LRU cache of float32 coordinate arrays keyed by (canvas_w, canvas_h, coeffs-tuple).
 # Capped at _COORD_CACHE_MAX entries (~5.6 MB each for 700×1000 canvas) to bound
