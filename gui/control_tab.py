@@ -26,6 +26,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from cli.bootstrap import _DATA, _PROFILES          # noqa: E402
+from cli.diagnostics import write_pyvips_diagnostic  # noqa: E402
 from cli.utils import auto_logo as _auto_logo        # noqa: E402
 from core.models import RenderOptions                # noqa: E402
 from core.pipeline import RenderPipeline             # noqa: E402
@@ -73,6 +74,8 @@ class ControlTab:
 
         self._covers_var.trace_add("write", self._scan_marquee_coverage)
         self._marquees_var.trace_add("write", self._scan_marquee_coverage)
+
+        self._run_startup_diagnostic()
 
     # =========================================================================
     # UI construction
@@ -587,6 +590,23 @@ class ControlTab:
                 subprocess.Popen(["xdg-open", str(path)])
         except Exception as exc:
             messagebox.showerror("Error", f"Cannot open folder:\n{exc}")
+
+    # =========================================================================
+    # Startup diagnostic
+    # =========================================================================
+
+    def _run_startup_diagnostic(self) -> None:
+        """Write pyvips diagnostic on startup; show backend status in log box."""
+        try:
+            log_path = write_pyvips_diagnostic(_DATA / "output" / "logs")
+            from engine.perspective import _PYVIPS_AVAILABLE, WARP_BACKEND_LABEL
+            if _PYVIPS_AVAILABLE:
+                self._log(f"✔  Warp: {WARP_BACKEND_LABEL}")
+            else:
+                self._log(f"⚠  Warp: {WARP_BACKEND_LABEL}")
+                self._log(f"   Diagnostic saved → {log_path}")
+        except Exception as exc:
+            self._log(f"⚠  Diagnostic error: {exc}")
 
     # =========================================================================
     # Log helpers

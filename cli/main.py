@@ -20,6 +20,7 @@ from cli.bootstrap import (
     _BUNDLE, _DATA, _PROFILES,
     _bootstrap_data_dir, _bootstrap_instructions,
 )
+from cli.diagnostics import write_pyvips_diagnostic
 from cli.utils import auto_logo as _auto_logo, parse_rgb_str
 from core.models   import CoverResult, RenderOptions, RenderSummary
 from core.registry import ProfileRegistry, ProfileError
@@ -362,6 +363,7 @@ def main() -> None:
         return
 
     _setup_logging(args.verbose, args.log_file)
+    write_pyvips_diagnostic(_DATA / "output" / "logs")
 
     registry = None
     if args.command in ("render", "profiles"):
