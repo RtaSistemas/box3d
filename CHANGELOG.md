@@ -10,6 +10,113 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Expert audit report** (`EXPERT-REPORT.md`) — Full UX + implementation
+  quality review covering 17 files / ~6,017 lines; 23 findings with
+  file:line citations, evidence, and concrete recommendations. Includes
+  Mermaid priority matrix and treatment-track flowchart.
+- **`GET /api/version`** (`web/server.py`) — New endpoint returning
+  `{"version": __version__}` sourced from `core/version.py`. Web UI
+  version badge now fetches from this endpoint on boot instead of
+  displaying a hardcoded string.
+- **`core/version.py`** — Single canonical version string (`__version__
+  = "3.0.0RC"`). `cli/main.py`, `cli/bootstrap.py`, and `web/server.py`
+  all import from this module, eliminating the three divergent version
+  strings (v2.0.0 / v2.1.0 / 3.0.0RC) that previously appeared across
+  different surfaces.
+- **`stop_event` parameter** on `RenderPipeline.run()` — Callers can
+  pass a `threading.Event` for cooperative cancellation. `_process_one`
+  checks the event before starting work and returns `status="skip"`;
+  the `as_completed` loop cancels pending futures when the event is set.
+  Replaces the previous pattern of raising `InterruptedError` inside the
+  progress callback (which left pool threads running after the loop exited).
+- **`asyncio.Lock` render mutex** (`web/server.py`) — `_render_lock`
+  prevents concurrent render sessions. A second POST `/api/render` while
+  one is in progress receives HTTP 409 `{"status":"busy"}` immediately,
+  preventing the progress queue and `_last_output_dir` from being shared
+  across sessions.
+- **Dedicated render executor** (`web/server.py`) — `_render_executor`
+  (single-thread `ThreadPoolExecutor`) reserved for the pipeline so that
+  long renders do not hold a slot in asyncio's shared default pool.
+- **`_VALID_VIPS_KERNELS` validation** (`engine/perspective.py`) —
+  `BOX3D_WARP_BACKEND` is validated at module import time. Invalid values
+  raise `ValueError` with the list of valid kernels immediately instead of
+  crashing inside `pyvips.Interpolate.new()` during the first batch render.
+- **LRU coordinate cache** (`engine/perspective.py`) — `_COORD_CACHE`
+  is now an `OrderedDict` capped at `_COORD_CACHE_MAX=16` entries with
+  LRU eviction, bounding memory growth in long-lived server processes.
+- **Registry mtime cache** (`web/server.py`) — `_get_registry()` caches
+  the `ProfileRegistry` and invalidates it only when `profiles/` directory
+  mtime changes, avoiding a full disk scan on every API call.
+- **Modal keyboard focus trap** (`web/ui/app.js`) — Summary modal receives
+  focus on open; `Tab`/`Shift+Tab` is confined to modal buttons (WCAG 2.2
+  §2.1.2 No Keyboard Trap).
+- **`TestInputValidation`** (`tests/test_v2.py`) — 6 new tests covering
+  `parse_rgb_str` edge cases (negative, above 5.0, wrong count, boundary
+  values) and the version consistency invariant.
+- **`test_stop_event_cancels_pipeline_cooperatively`** (`tests/test_v2.py`)
+  — Verifies that a pre-set `stop_event` produces zero errors and zero
+  successes for a two-cover batch (all covers skipped cooperatively).
+- **`test_coord_cache_evicts_oldest_entry`** (`tests/test_v2.py`) —
+  Verifies that `_COORD_CACHE` never exceeds `_COORD_CACHE_MAX` entries.
+
+### Fixed
+
+- **`Image.open` file handle leak** (`core/pipeline.py`) — `_safe_open`
+  now uses `with Image.open(path) as raw:` to guarantee the file descriptor
+  is released immediately after decode. Previously an implicit reference
+  kept the handle open until GC, which could exhaust OS limits on Windows
+  during large batches and prevent source file rename/delete operations.
+- **Lock-safe circuit-breaker stats read** (`core/pipeline.py`) — The
+  `total_errors` snapshot for the circuit-breaker percentage check is now
+  read inside `self._lock`, consistent with all stat writes.
+- **Marquees-directory warning spam** (`core/pipeline.py`) — The
+  "Marquees directory not found" warning now fires only when the caller
+  explicitly provided a `marquees_dir` path. For profiles that don't
+  populate `assets/`, the default fallback path is silently skipped.
+- **GUI cancellation via `InterruptedError`** (`gui/control_tab.py`) —
+  Replaced exception injection into the progress callback with
+  `stop_event`-based cooperative cancellation. Pool threads no longer
+  continue after the loop exits.
+- **`--blur-radius` upper bound** (`cli/main.py`) — CLI now validates
+  `0 <= n <= 100` (was only `>= 0`), consistent with web and GUI bounds.
+- **RGB matrix upper bound** (`cli/utils.py`, `web/server.py`) —
+  `parse_rgb_str` rejects channel values outside `[0.0, 5.0]`. Web API
+  Pydantic model uses `Annotated[float, Field(ge=0, le=5.0)]` per element.
+- **`cover_fit` and `output_format` enum validation** (`web/server.py`) —
+  Changed from `str | None` with description strings to
+  `Literal["stretch","fit","crop"] | None` and `Literal["webp","png"]`.
+  Invalid values now return HTTP 422 instead of silently defaulting.
+- **CORS wildcard** (`web/server.py`) — Restricted to localhost/127.0.0.1
+  origins only. `allow_origins=["*"]` on a server with filesystem endpoints
+  allowed any web page to trigger renders or probe local paths.
+- **`SpineLayout` and `Profile` are now frozen** (`core/models.py`) —
+  Consistent with the `frozen=True` invariant already applied to all other
+  domain dataclasses. All call sites already use `dataclasses.replace()`.
+- **Designer spine layout rotation defaults** (`gui/designer_tab.py`) —
+  Default rotation changed from `-90` to `0` (matching `LogoSlot.rotate`
+  default). Import fallback also corrected. Previously an import+re-export
+  round-trip silently changed `rotate=0` profiles to `-90`.
+- **No-command startup notice** (`cli/main.py`) — Now prints an explicit
+  `stdout` notice before starting uvicorn so users know a server launched
+  on port 8000, independent of logging configuration.
+- **SSE `onerror` false disconnects** (`web/ui/app.js`) — Handler now
+  checks `readyState === EventSource.CLOSED` before reporting "connection
+  lost". Transient `CONNECTING` states (browser auto-retrying) no longer
+  close the stream prematurely or show false error messages.
+- **Web UI version badge** (`web/ui/index.html`, `web/ui/app.js`) — Static
+  `v2.1.0` replaced with dynamic fetch from `/api/version` on boot.
+- **`parse_rgb_str` double-log** (`cli/utils.py`) — Removed internal
+  `log.warning` from `parse_rgb_str`; error reporting consolidated at the
+  call site in `cli/main.py`, eliminating duplicate log entries for a
+  single user error.
+- **Per-field GUI validation** (`gui/control_tab.py`) — Workers, Blur, and
+  Darken are now parsed independently with field-specific error messages
+  and range checks. Previously a single `except ValueError` showed the
+  Workers error message for any of the three fields.
+- **Output directory empty-string check** (`gui/control_tab.py`) — The
+  check now runs before `Path(output_str)` construction and before the
+  `mkdir` call, so it can actually trigger.
+
 - **pyvips warp backend** (`engine/perspective.py`) — When `pyvips` is
   installed (`pip install -e ".[quality]"`), the perspective warp uses
   `pyvips.Image.mapim` with the `lbb` (locally bounded bicubic) interpolator

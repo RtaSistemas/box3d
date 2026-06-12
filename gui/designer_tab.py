@@ -422,7 +422,7 @@ class DesignerTab:
         }
         self._logo_alpha_var = ctk.StringVar(value="0.85")
 
-        defaults = {"game": ("80","320","500","-90"), "top": ("80","120","160","-90"), "bottom": ("80","80","840","-90")}
+        defaults = {"game": ("80","320","500","0"), "top": ("80","120","160","0"), "bottom": ("80","80","840","0")}
         for si, slot in enumerate(("game", "top", "bottom")):
             ctk.CTkLabel(
                 self._slots_section, text=f"  {slot.upper()}",
@@ -694,7 +694,7 @@ class DesignerTab:
                 sv["max_w"].set(str(s.get("max_w", 80)))
                 sv["max_h"].set(str(s.get("max_h", int(dh_map[slot]))))
                 sv["center_y"].set(str(s.get("center_y", int(dy_map[slot]))))
-                sv["rotate"].set(str(s.get("rotate", -90)))
+                sv["rotate"].set(str(s.get("rotate", 0)))
             self._update_obj_list()
             self._update_json_preview()
         except Exception as exc:

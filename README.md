@@ -57,6 +57,8 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 | **Multiple output formats** | WebP (q 92, default) or lossless PNG |
 | **Incremental batches** | `--skip-existing` skips already-rendered outputs |
 | **Dry-run validation** | `--dry-run` validates inputs and reports without writing any files |
+| **Cooperative cancellation** | `stop_event` parameter on `RenderPipeline.run()` — clean thread-safe cancellation without exception injection |
+| **Localhost-only CORS** | Web server restricts cross-origin requests to `127.0.0.1` / `localhost` only — filesystem endpoints not callable from external pages |
 
 ---
 
@@ -517,7 +519,7 @@ box3d/
 │       └── index.html   ← Self-contained visual profile editor (v1.3.0)
 │
 └── tests/
-    ├── test_v2.py       ← 90 unit + integration tests
+    ├── test_v2.py       ← 123 unit + integration tests
     ├── test_web.py      ← 30 FastAPI / SSE tests (skipped if [web] not installed)
     ├── run_visual_tests.py
     └── assets/          ← Fixtures: cover, marquee, logos, templates
@@ -769,7 +771,7 @@ Expected: **30 tests passed**.
 ### Full suite
 
 ```bash
-pytest tests/ -v               # 145 tests total
+pytest tests/ -v               # 153+ tests total
 ```
 
 ### Test coverage breakdown
@@ -807,7 +809,7 @@ Output written to `tests/visual_output/` (gitignored).
 1. Fork and create a feature branch.
 2. `pip install -e ".[dev,web,gui]"` to install all dev dependencies.
 3. Add tests for any new behaviour.
-4. `pytest tests/ -v` — all 120 tests must pass.
+4. `pytest tests/ -v` — all 123+ tests must pass.
 5. Open a pull request against `main`.
 
 **Adding a new built-in profile:** follow [Creating a profile](#creating-a-profile). Include `template.png` and at least one end-to-end test in `TestPipeline`.

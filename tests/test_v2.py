@@ -884,7 +884,8 @@ class TestPipelineEngineIoPurge:
         type(mock_img).height = PropertyMock(return_value=100)
 
         with patch("PIL.Image.open") as mock_open:
-            mock_open.return_value.convert.return_value = mock_img
+            # _safe_open uses `with Image.open(...) as raw:` — mock the context manager
+            mock_open.return_value.__enter__.return_value.convert.return_value = mock_img
             _safe_open(img_path)
 
         mock_img.thumbnail.assert_called_once_with((8192, 8192), Image.BICUBIC)
@@ -903,10 +904,39 @@ class TestPipelineEngineIoPurge:
         type(mock_img).height = PropertyMock(return_value=1000)
 
         with patch("PIL.Image.open") as mock_open:
-            mock_open.return_value.convert.return_value = mock_img
+            mock_open.return_value.__enter__.return_value.convert.return_value = mock_img
             _safe_open(img_path)
 
         mock_img.thumbnail.assert_not_called()
+
+    def test_stop_event_cancels_pipeline_cooperatively(self, tmp_path):
+        """stop_event set before run() skips pending covers without raising exceptions."""
+        import threading
+        from core.pipeline import RenderPipeline
+        from core.models import RenderOptions
+        from core.registry import ProfileRegistry
+
+        covers = tmp_path / "covers"
+        covers.mkdir()
+        # Create two covers so we have something to process
+        for name in ("a.png", "b.png"):
+            Image.new("RGBA", (100, 100), (1, 2, 3, 255)).save(str(covers / name))
+
+        out = tmp_path / "out"
+        profile = ProfileRegistry(PROFILES).load().get("mvs")
+
+        stop = threading.Event()
+        stop.set()   # pre-set: _process_one checks event before starting work
+
+        pipeline = RenderPipeline(
+            profile=profile, covers_dir=covers, output_dir=out,
+            options=RenderOptions(workers=1), logo_paths={},
+        )
+        report = pipeline.run(stop_event=stop)
+
+        # With stop pre-set, every cover returns "skip" — none should error
+        assert report.failed == 0
+        assert report.succeeded == 0
 
     def test_compositor_module_has_no_image_open_call(self):
         """engine.compositor must contain no Image.open() call (zero I/O contract)."""
@@ -1509,4 +1539,75 @@ class TestWarpBackend:
         # _VIPS_KERNEL defaults to 'lbb' if env var is absent
         assert ep._VIPS_KERNEL in ("lbb", "nohalo", "bicubic", "bilinear"), (
             f"Unexpected _VIPS_KERNEL value: {ep._VIPS_KERNEL!r}"
+        )
+
+    def test_coord_cache_evicts_oldest_entry(self):
+        """_COORD_CACHE must not exceed _COORD_CACHE_MAX entries."""
+        import engine.perspective as ep
+
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed")
+
+        original_cache = ep._COORD_CACHE
+        from collections import OrderedDict
+        ep._COORD_CACHE = OrderedDict()
+
+        try:
+            max_entries = ep._COORD_CACHE_MAX
+            # Fill cache beyond its limit using different canvas sizes
+            for w in range(max_entries + 3):
+                src = Image.new("RGBA", (10, 10), (128, 128, 128, 255))
+                pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
+                ep._get_coord_array(100 + w, 100, ep.solve_coefficients(
+                    [(0, 0), (10, 0), (10, 10), (0, 10)], pts,
+                ))
+            assert len(ep._COORD_CACHE) <= max_entries, (
+                f"Cache grew to {len(ep._COORD_CACHE)} entries, "
+                f"exceeding limit of {max_entries}"
+            )
+        finally:
+            ep._COORD_CACHE = original_cache
+
+
+# ===========================================================================
+# Input validation (F-04, F-05, F-08 remediation coverage)
+# ===========================================================================
+
+class TestInputValidation:
+
+    def test_parse_rgb_str_rejects_negative_channel(self):
+        """parse_rgb_str must return None for negative channel values."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("-0.1,1.0,1.0") is None
+
+    def test_parse_rgb_str_rejects_value_above_5(self):
+        """parse_rgb_str must return None for channel values above 5.0."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("6.0,1.0,1.0") is None
+
+    def test_parse_rgb_str_accepts_boundary_values(self):
+        """parse_rgb_str must accept exactly 0.0 and 5.0."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("0.0,5.0,1.0") is not None
+
+    def test_parse_rgb_str_rejects_wrong_count(self):
+        """parse_rgb_str must return None for fewer or more than 3 values."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("1.0,1.0") is None
+        assert parse_rgb_str("1.0,1.0,1.0,1.0") is None
+
+    def test_parse_rgb_str_valid_returns_matrix_string(self):
+        """parse_rgb_str with valid input must return the diagonal matrix string."""
+        from cli.utils import parse_rgb_str
+        result = parse_rgb_str("1.1,1.0,0.9")
+        assert result is not None
+        assert "1.1" in result and "1.0" in result and "0.9" in result
+
+    def test_version_is_consistent(self):
+        """core/version.__version__ must match the string in bootstrap._VERSION."""
+        from core.version import __version__
+        from cli.bootstrap import _VERSION
+        assert __version__ == _VERSION, (
+            f"Version mismatch: core.version={__version__!r}, "
+            f"bootstrap._VERSION={_VERSION!r}"
         )

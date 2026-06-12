@@ -23,6 +23,7 @@ from cli.bootstrap import (
 from cli.utils import auto_logo as _auto_logo, parse_rgb_str
 from core.models   import CoverResult, RenderOptions, RenderSummary
 from core.registry import ProfileRegistry, ProfileError
+from core.version  import __version__
 
 log = logging.getLogger("box3d.cli")
 
@@ -47,7 +48,7 @@ def _workers_type(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="box3d",
-        description="box3d — Arcade game 3D box art generator (v2.0.0)",
+        description=f"box3d — Arcade game 3D box art generator (v{__version__})",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -79,7 +80,7 @@ Examples:
     render_p.add_argument("--output", "-o", type=str,
                           help="Output directory (default: <data>/output/converted)")
     render_p.add_argument("--blur-radius", "-b", type=int, default=20,
-                          help="Spine background blur radius (>= 0)")
+                          help="Spine background blur radius (0-100)")
     render_p.add_argument("--darken", "-d", type=int, default=180,
                           help="Spine dark overlay alpha (0-255)")
     render_p.add_argument("--rgb", "-R", type=str,
@@ -198,8 +199,8 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         log.error("--darken %d is out of bounds (0-255).", args.darken)
         return 1
 
-    if args.blur_radius < 0:
-        log.error("--blur-radius %d must be >= 0.", args.blur_radius)
+    if not (0 <= args.blur_radius <= 100):
+        log.error("--blur-radius %d is out of bounds (0-100).", args.blur_radius)
         return 1
 
     rgb_matrix = parse_rgb_str(args.rgb) if args.rgb else None
@@ -354,7 +355,8 @@ def main() -> None:
             parser.print_help()
             sys.exit(0)
         _setup_logging(getattr(args, "verbose", False), getattr(args, "log_file", None))
-        log.info("No command given — launching web server on http://127.0.0.1:8000")
+        print(f"box3d v{__version__} — starting web server at http://127.0.0.1:8000"
+              " (press Ctrl+C to stop)", flush=True)
         import uvicorn
         uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
         return

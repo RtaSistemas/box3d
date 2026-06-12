@@ -32,6 +32,7 @@ import platform
 import queue
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -40,11 +41,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from typing import Annotated, Literal
 
 from cli.bootstrap import _BUNDLE, _PROFILES
 from cli.utils import auto_logo as _auto_logo
 from core.models import CoverResult, RenderOptions
 from core.registry import ProfileRegistry, ProfileError
+from core.version import __version__
 
 app = FastAPI(
     title="Box3D Web Control Center",
@@ -52,23 +55,26 @@ app = FastAPI(
     version="3.0.0RC",
 )
 
-# Allow browser clients running on any origin (dev-friendly default).
-# Tighten to specific origins before deploying to production.
+# Restrict CORS to localhost origins only — the server exposes filesystem
+# endpoints (render, validate-path, open-folder) that must not be callable
+# from arbitrary web pages opened in the same browser.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000"],
+    allow_origin_regex=r"http://(127\.0\.0\.1|localhost):\d+",
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # ---------------------------------------------------------------------------
-# Global state
-# A single queue is sufficient for the single-operator desktop use-case this
-# server targets.  Replace with a keyed dict[session_id, Queue] if multiple
-# concurrent render sessions are ever needed.
+# Global state (single-operator desktop model)
 # ---------------------------------------------------------------------------
 _progress_queue: queue.Queue[dict] = queue.Queue()
 _last_output_dir: Path | None = None   # set by _run_pipeline; read by /api/open-folder
+_render_lock     = asyncio.Lock()       # prevents concurrent render sessions
+# Single-thread executor reserved for the render pipeline so it never ties
+# up a slot from asyncio's shared default pool for the full render duration.
+_render_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="box3d-render")
 
 
 # ---------------------------------------------------------------------------
@@ -81,21 +87,21 @@ class RenderRequest(BaseModel):
     output_dir:   str  = Field(...,  description="Absolute path to output directory")
     marquees_dir: str | None = Field(None, description="Path to marquees directory (optional)")
     workers:      int  = Field(4,    ge=1, description="Parallel worker threads")
-    blur_radius:  int  = Field(20,   ge=0, description="Spine background blur radius")
+    blur_radius:  int  = Field(20,   ge=0, le=100, description="Spine background blur radius (0-100)")
     darken_alpha: int  = Field(180,  ge=0, le=255, description="Spine dark overlay alpha")
-    cover_fit:    str | None = Field(None, description="stretch | fit | crop")
+    cover_fit:    Literal["stretch", "fit", "crop"] | None = Field(None, description="Cover fit mode")
     spine_source: str | None = Field(
         None,
         description="Spine background sample position: left | right | center (None = profile default)",
         pattern=r"^(left|right|center)$",
     )
-    output_format: str = Field("webp", description="webp | png")
+    output_format: Literal["webp", "png"] = Field("webp", description="Output image format")
     skip_existing: bool = Field(False)
     dry_run:       bool = Field(False)
     no_logos:      bool = Field(False)
-    rgb_matrix:   list[float] | None = Field(
-        None, description="[r, g, b] channel scale factors (0.0–5.0)", min_length=3, max_length=3
-    )
+    rgb_matrix:   Annotated[
+        list[Annotated[float, Field(ge=0.0, le=5.0)]], Field(min_length=3, max_length=3)
+    ] | None = Field(None, description="[r, g, b] channel scale factors (0.0–5.0)")
 
 
 class OpenFolderRequest(BaseModel):
@@ -110,13 +116,32 @@ class PathCheckRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+_registry_cache: ProfileRegistry | None = None
+_registry_mtime: float = 0.0
+
+
 def _get_registry() -> ProfileRegistry:
-    return ProfileRegistry(str(_PROFILES)).load()
+    """Return a cached ProfileRegistry, refreshed when profiles/ mtime changes."""
+    global _registry_cache, _registry_mtime
+    try:
+        mtime = _PROFILES.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    if _registry_cache is None or mtime != _registry_mtime:
+        _registry_cache = ProfileRegistry(str(_PROFILES)).load()
+        _registry_mtime = mtime
+    return _registry_cache
 
 
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/api/version", summary="Return the application version string")
+def get_version() -> JSONResponse:
+    """Return ``{"version": "3.0.0RC"}`` for display in the web UI."""
+    return JSONResponse({"version": __version__})
+
 
 @app.get("/api/profiles", summary="List available profiles")
 def list_profiles() -> JSONResponse:
@@ -189,8 +214,16 @@ async def start_render(
 
     Returns ``{"status": "started"}`` immediately so the caller can begin
     consuming ``/api/progress`` without waiting for the full batch to finish.
+    Returns ``{"status": "busy"}`` (HTTP 409) when another render is in progress.
     Returns ``{"status": "error", "detail": "..."}`` on validation failure.
     """
+    # --- Reject concurrent renders to prevent queue/state corruption ---
+    if _render_lock.locked():
+        return JSONResponse(
+            {"status": "busy", "detail": "A render is already in progress."},
+            status_code=409,
+        )
+
     # --- Registry & profile lookup ---
     try:
         registry = _get_registry()
@@ -212,21 +245,20 @@ async def start_render(
     # --- RGB matrix ---
     # RenderOptions.rgb_matrix expects the diagonal matrix string consumed by
     # engine/blending.apply_color_matrix() — e.g. "1.1 0 0  0 1.0 0  0 0 0.9".
-    # Payload sends [r, g, b] floats; convert here (same as cli/utils.parse_rgb_str).
+    # Payload sends [r, g, b] floats validated by Pydantic (ge=0.0, le=5.0 each).
     rgb_matrix_str: str | None = None
     if payload.rgb_matrix and len(payload.rgb_matrix) == 3:
         r, g, b = payload.rgb_matrix
-        if r >= 0 and g >= 0 and b >= 0:
-            rgb_matrix_str = f"{r} 0 0  0 {g} 0  0 0 {b}"
+        rgb_matrix_str = f"{r} 0 0  0 {g} 0  0 0 {b}"
 
     # --- Options ---
     options = RenderOptions(
         blur_radius   = payload.blur_radius,
         darken_alpha  = payload.darken_alpha,
         rgb_matrix    = rgb_matrix_str,
-        cover_fit     = payload.cover_fit,    # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
-        spine_source  = payload.spine_source, # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
-        output_format = payload.output_format,# type: ignore[arg-type]  (Literal validated by Pydantic enum)
+        cover_fit     = payload.cover_fit,
+        spine_source  = payload.spine_source,  # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
+        output_format = payload.output_format,
         skip_existing = payload.skip_existing,
         workers       = payload.workers,
         dry_run       = payload.dry_run,
@@ -287,8 +319,12 @@ async def start_render(
             "output_format":   payload.output_format,
         })
 
-    # Dispatch to a thread so the async event loop stays responsive.
-    background_tasks.add_task(asyncio.to_thread, _run_pipeline)
+    async def _locked_run() -> None:
+        async with _render_lock:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_render_executor, _run_pipeline)
+
+    background_tasks.add_task(_locked_run)
 
     return JSONResponse({"status": "started", "profile": payload.profile,
                          "covers_dir": str(covers_dir)})

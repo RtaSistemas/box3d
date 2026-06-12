@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 
 from PIL import Image
 
@@ -45,7 +45,8 @@ def _safe_open(path: Path) -> Image.Image:
     If the image exceeds 8192px on either axis, it is immediately
     downscaled proportionally before being returned.
     """
-    img = Image.open(path).convert("RGBA")
+    with Image.open(path) as raw:
+        img = raw.convert("RGBA")
     if img.width > 8192 or img.height > 8192:
         log.warning("OOM Hardening: downscaling %s (%dx%d → ≤8192px)",
                     path.name, img.width, img.height)
@@ -83,6 +84,7 @@ class RenderPipeline:
         self.options      = options
         self.logo_paths   = logo_paths or {}
         self.marquees_dir = marquees_dir or (profile.root / "assets")
+        self._marquees_explicit = marquees_dir is not None
         self.no_logos     = no_logos
         self._stats: dict[str, int] = {"ok": 0, "skip": 0, "error": 0, "dry": 0}
         self._lock  = Lock()
@@ -136,6 +138,7 @@ class RenderPipeline:
     def run(
         self,
         on_progress: Callable[[int, int, CoverResult], None] | None = None,
+        stop_event: Event | None = None,
     ) -> RenderSummary:
         """
         Execute the full render batch.
@@ -210,7 +213,7 @@ class RenderPipeline:
             futures = {
                 pool.submit(
                     self._process_one, path, template_img,
-                    top_logo_img, bottom_logo_img
+                    top_logo_img, bottom_logo_img, stop_event
                 ): path
                 for path in covers
             }
@@ -230,13 +233,20 @@ class RenderPipeline:
                 if on_progress is not None:
                     on_progress(done, total, result)
 
+                # --- Cooperative stop: caller requested cancellation ---
+                if stop_event is not None and stop_event.is_set():
+                    cancelled = sum(1 for f in futures if f.cancel())
+                    log.info("Stop event received — cancelled %d pending task(s).", cancelled)
+                    break
+
                 # --- Circuit Breaker logic ---
                 if result.status == "error":
                     consecutive_errors += 1
                 else:
                     consecutive_errors = 0
 
-                total_errors = self._stats.get("error", 0)
+                with self._lock:
+                    total_errors = self._stats.get("error", 0)
 
                 if consecutive_errors > _CB_MAX_CONSECUTIVE or \
                    total_errors > error_threshold:
@@ -267,16 +277,21 @@ class RenderPipeline:
         template_img:    Image.Image,
         top_logo_img:    Image.Image | None,
         bottom_logo_img: Image.Image | None,
+        stop_event:      Event | None = None,
     ) -> CoverResult:
         """
         Process one cover: open, compose, save.
         All disk I/O is concentrated here — engine/ is I/O-free.
+        Checks stop_event before starting work for cooperative cancellation.
         """
         from engine.compositor import compose_cover
 
         rel  = cover_path.relative_to(self.covers_dir)
         stem = str(rel.with_suffix(""))  # relative path used by GUI preview to locate output
         t0   = time.perf_counter()
+
+        if stop_event is not None and stop_event.is_set():
+            return CoverResult(stem=stem, status="skip", elapsed=0.0)
 
         output_path = self.output_dir / rel.with_suffix(f".{self.options.output_format}")
 
@@ -344,7 +359,7 @@ class RenderPipeline:
             if path is not None and not path.exists():
                 log.error("--%s-logo: file not found: %s", label, path)
                 ok = False
-        if self.marquees_dir and not self.marquees_dir.is_dir():
+        if self._marquees_explicit and self.marquees_dir and not self.marquees_dir.is_dir():
             log.warning("Marquees directory not found: %s — no game logos", self.marquees_dir)
         return ok
 
