@@ -121,7 +121,7 @@ class ProfileGeometry:
             raise ValueError("Cover resolution exceeds hard limit.")
 
 
-@dataclass
+@dataclass(frozen=True)
 class SpineLayout:
     """Logo placement on the spine strip (spine-space coordinates)."""
     game:   LogoSlot
@@ -131,7 +131,7 @@ class SpineLayout:
     logo_alpha: float = 0.85
 
 
-@dataclass
+@dataclass(frozen=True)
 class Profile:
     """
     Complete, self-contained profile.

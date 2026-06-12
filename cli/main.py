@@ -355,7 +355,8 @@ def main() -> None:
             parser.print_help()
             sys.exit(0)
         _setup_logging(getattr(args, "verbose", False), getattr(args, "log_file", None))
-        log.info("No command given — launching web server on http://127.0.0.1:8000")
+        print(f"box3d v{__version__} — starting web server at http://127.0.0.1:8000"
+              " (press Ctrl+C to stop)", flush=True)
         import uvicorn
         uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
         return

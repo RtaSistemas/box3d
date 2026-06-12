@@ -53,13 +53,15 @@ app = FastAPI(
     version="3.0.0RC",
 )
 
-# Allow browser clients running on any origin (dev-friendly default).
-# Tighten to specific origins before deploying to production.
+# Restrict CORS to localhost origins only — the server exposes filesystem
+# endpoints (render, validate-path, open-folder) that must not be callable
+# from arbitrary web pages opened in the same browser.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000"],
+    allow_origin_regex=r"http://(127\.0\.0\.1|localhost):\d+",
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # ---------------------------------------------------------------------------
