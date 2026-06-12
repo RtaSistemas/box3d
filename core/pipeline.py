@@ -170,6 +170,8 @@ class RenderPipeline:
         log.info("  Output   : %s  [%s]",
                  self.output_dir, self.options.output_format)
         log.info("  Workers  : %d", self.options.workers)
+        from engine.perspective import WARP_BACKEND_LABEL
+        log.info("  Warp     : %s", WARP_BACKEND_LABEL)
         log.info("=" * 62)
 
         if not self._validate():
