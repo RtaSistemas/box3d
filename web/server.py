@@ -63,13 +63,11 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Global state
-# A single queue is sufficient for the single-operator desktop use-case this
-# server targets.  Replace with a keyed dict[session_id, Queue] if multiple
-# concurrent render sessions are ever needed.
+# Global state (single-operator desktop model)
 # ---------------------------------------------------------------------------
 _progress_queue: queue.Queue[dict] = queue.Queue()
 _last_output_dir: Path | None = None   # set by _run_pipeline; read by /api/open-folder
+_render_lock     = asyncio.Lock()       # prevents concurrent render sessions
 
 
 # ---------------------------------------------------------------------------
@@ -190,8 +188,16 @@ async def start_render(
 
     Returns ``{"status": "started"}`` immediately so the caller can begin
     consuming ``/api/progress`` without waiting for the full batch to finish.
+    Returns ``{"status": "busy"}`` (HTTP 409) when another render is in progress.
     Returns ``{"status": "error", "detail": "..."}`` on validation failure.
     """
+    # --- Reject concurrent renders to prevent queue/state corruption ---
+    if _render_lock.locked():
+        return JSONResponse(
+            {"status": "busy", "detail": "A render is already in progress."},
+            status_code=409,
+        )
+
     # --- Registry & profile lookup ---
     try:
         registry = _get_registry()
@@ -287,8 +293,11 @@ async def start_render(
             "output_format":   payload.output_format,
         })
 
-    # Dispatch to a thread so the async event loop stays responsive.
-    background_tasks.add_task(asyncio.to_thread, _run_pipeline)
+    async def _locked_run() -> None:
+        async with _render_lock:
+            await asyncio.to_thread(_run_pipeline)
+
+    background_tasks.add_task(_locked_run)
 
     return JSONResponse({"status": "started", "profile": payload.profile,
                          "covers_dir": str(covers_dir)})
