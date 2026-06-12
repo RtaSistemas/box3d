@@ -46,6 +46,7 @@ from cli.bootstrap import _BUNDLE, _PROFILES
 from cli.utils import auto_logo as _auto_logo
 from core.models import CoverResult, RenderOptions
 from core.registry import ProfileRegistry, ProfileError
+from core.version import __version__
 
 app = FastAPI(
     title="Box3D Web Control Center",
@@ -131,6 +132,12 @@ def _get_registry() -> ProfileRegistry:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/api/version", summary="Return the application version string")
+def get_version() -> JSONResponse:
+    """Return ``{"version": "3.0.0RC"}`` for display in the web UI."""
+    return JSONResponse({"version": __version__})
+
 
 @app.get("/api/profiles", summary="List available profiles")
 def list_profiles() -> JSONResponse:

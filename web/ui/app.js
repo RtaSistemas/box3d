@@ -45,6 +45,7 @@ const previewImg      = $('preview-img');
 const btnCloseModal   = $('btn-close-modal');
 const btnOpenOutput   = $('btn-open-output');
 const serverStatus    = $('server-status');
+const appVersion      = $('app-version');
 
 const rgbPicker       = $('opt-rgb-picker');
 const rgbLabel        = $('rgb-label');
@@ -325,9 +326,12 @@ async function startRender() {
   };
 
   _evtSource.onerror = () => {
-    if (_evtSource) {
+    if (!_evtSource) return;
+    // CONNECTING (readyState=0) means the browser is auto-retrying — do not
+    // close or report an error; let the browser handle the reconnect.
+    // Only act on CLOSED (readyState=2) which is a true disconnection.
+    if (_evtSource.readyState === EventSource.CLOSED) {
       _appendLog('✘ Connection to server lost.');
-      _evtSource.close();
       _evtSource = null;
       _setRendering(false);
     }
@@ -444,6 +448,22 @@ function _showSummary(data) {
   }
 
   summaryOverlay.classList.remove('hidden');
+  // F-19: Move focus into the modal and trap Tab/Shift+Tab within it
+  btnCloseModal.focus();
+  summaryOverlay.addEventListener('keydown', _trapModalFocus);
+}
+
+function _trapModalFocus(e) {
+  if (e.key !== 'Tab') return;
+  const focusable = [btnOpenOutput, btnCloseModal].filter(el => !el.hidden);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last  = focusable[focusable.length - 1];
+  if (e.shiftKey) {
+    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+  } else {
+    if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+  }
 }
 
 function _stat(label, value, cls) {
@@ -470,6 +490,7 @@ btnRender.addEventListener('click', startRender);
 
 btnCloseModal.addEventListener('click', () => {
   summaryOverlay.classList.add('hidden');
+  summaryOverlay.removeEventListener('keydown', _trapModalFocus);
 });
 
 btnOpenOutput.addEventListener('click', async () => {
@@ -484,10 +505,22 @@ btnOpenOutput.addEventListener('click', async () => {
 
 // Close modal on overlay click
 summaryOverlay.addEventListener('click', (e) => {
-  if (e.target === summaryOverlay) summaryOverlay.classList.add('hidden');
+  if (e.target === summaryOverlay) {
+    summaryOverlay.classList.add('hidden');
+    summaryOverlay.removeEventListener('keydown', _trapModalFocus);
+  }
 });
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
 
+async function fetchVersion() {
+  try {
+    const res  = await fetch('/api/version');
+    const data = await res.json();
+    if (appVersion && data.version) appVersion.textContent = `v${data.version}`;
+  } catch { /* silently ignore — version badge is cosmetic */ }
+}
+
 _updateRgbLabel();   // initialise label from picker default (#333333 → neutral)
+fetchVersion();
 fetchProfiles();
