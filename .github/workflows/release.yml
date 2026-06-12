@@ -95,8 +95,8 @@ jobs:
       - name: Install libvips native library (Windows)
         # Download the official prebuilt libvips web-variant for Windows x64.
         # The web variant covers all formats box3d uses (webp, jpeg, png, tiff).
-        # The bin/ directory is added to GITHUB_PATH so pyvips can import
-        # successfully during the "Embed" verification step below.
+        # We discover libvips-42.dll inside the extracted tree dynamically so
+        # the step is resilient to minor changes in the zip's internal structure.
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
@@ -105,8 +105,15 @@ jobs:
           $url = "https://github.com/libvips/build-win64-mxe/releases/download/v${version}/${archive}"
           Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
           Expand-Archive -Path $archive -DestinationPath C:\vips
-          $binPath = "C:\vips\vips-dev-w64-web-${version}\bin"
+          # Discover the actual bin/ directory regardless of internal zip structure
+          $libvipsDll = Get-ChildItem -Path C:\vips -Recurse -Filter "libvips-42.dll" |
+                          Select-Object -First 1
+          if (-not $libvipsDll) { Write-Error "libvips-42.dll not found after extraction"; exit 1 }
+          $binPath = $libvipsDll.Directory.FullName
+          Write-Host "libvips bin dir: $binPath"
           echo $binPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Store path for the Embed step (GITHUB_ENV persists across steps)
+          echo "VIPS_BIN=$binPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install runtime dependencies, web + gui extras, and PyInstaller
         # pyvips (Python CFFI bindings) is installed here; the native libvips
@@ -116,38 +123,42 @@ jobs:
       - name: Embed libvips shared library into pyvips package dir (Linux)
         # pyvips uses cffi.dlopen() at runtime — a dynamic load that PyInstaller
         # cannot trace statically. --collect-all pyvips only bundles the Python
-        # files, never the native .so.  The documented solution is to copy
-        # libvips.so.42 (and its vips-specific loaders) into the pyvips package
-        # directory *before* running PyInstaller so that --collect-all picks them
-        # up and places them alongside the bundle entry point.
+        # files, never the native .so.  Copying libvips.so.42 into the pyvips
+        # package directory before PyInstaller ensures --collect-all picks it up.
         if: matrix.os == 'ubuntu-latest'
         run: |
-          PYVIPS_DIR=$(python3 -c "import pyvips, os; print(os.path.dirname(pyvips.__file__))")
-          # Locate the installed versioned library via ldconfig
+          # Use pip show to find the pyvips dir without importing the module
+          PYVIPS_DIR=$(pip show pyvips | grep '^Location:' | sed 's/Location: //')/pyvips
           LIBVIPS=$(ldconfig -p | grep 'libvips\.so\.' | awk '{print $NF}' | head -1)
           echo "Copying $LIBVIPS → $PYVIPS_DIR"
           cp "$LIBVIPS" "$PYVIPS_DIR/"
-          # Copy vips format-loader plugins if present (not critical but improves codec coverage)
-          find /usr/lib/x86_64-linux-gnu/vips-modules-* -name "*.so" -exec cp -v {} "$PYVIPS_DIR/" \; 2>/dev/null || true
+          find /usr/lib/x86_64-linux-gnu/vips-modules-* -name "*.so" \
+            -exec cp -v {} "$PYVIPS_DIR/" \; 2>/dev/null || true
           python3 -c "import pyvips; print('pyvips', pyvips.__version__, '— libvips OK')"
 
       - name: Embed libvips DLLs into pyvips package dir (Windows)
-        # Same rationale as the Linux step: pyvips loads libvips-42.dll via
-        # cffi.dlopen() which PyInstaller cannot trace.  Copying all DLLs from
-        # the downloaded vips-dev-w64-web bin/ directory into the pyvips package
-        # directory ensures --collect-all pyvips bundles them into the .exe /
-        # onedir output.  The full bin/ set is required because libvips-42.dll
-        # itself depends on libglib, libgobject, libexpat and friends — all
-        # absent from a standard Windows installation.
+        # VIPS_BIN was written to GITHUB_ENV by the Install step so the path
+        # is always consistent regardless of the zip's internal structure.
+        # pyvips dir is found via pip show (no module import — avoids a
+        # chicken-and-egg DLL load failure).  Trailing whitespace is stripped
+        # from all captured strings before use as filesystem paths.
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $version = "8.15.5"
-          $vipsBin = "C:\vips\vips-dev-w64-web-${version}\bin"
-          $pyvipsDir = python -c "import pyvips, os; print(os.path.dirname(pyvips.__file__))"
+          $vipsBin = $env:VIPS_BIN
+          Write-Host "vips bin : $vipsBin"
+          # Locate pyvips package dir via pip show (does not import the module)
+          $pipLocation = (pip show pyvips | Select-String "^Location:").ToString() `
+                           -replace "^Location:\s*", ""
+          $pyvipsDir = Join-Path $pipLocation.Trim() "pyvips"
+          Write-Host "pyvips dir: $pyvipsDir"
+          if (-not (Test-Path $pyvipsDir)) {
+            Write-Error "pyvips package dir not found: $pyvipsDir"; exit 1
+          }
           $dlls = Get-ChildItem -Path $vipsBin -Filter "*.dll"
-          $dlls | Copy-Item -Destination $pyvipsDir
-          Write-Host "Copied $($dlls.Count) DLLs into $pyvipsDir"
+          Write-Host "Copying $($dlls.Count) DLLs from $vipsBin → $pyvipsDir"
+          $dlls | Copy-Item -Destination $pyvipsDir -Force
+          # Verify pyvips can now load libvips
           python -c "import pyvips; print('pyvips', pyvips.__version__, '-- libvips OK')"
 
       - name: Build standalone executable (Linux)
