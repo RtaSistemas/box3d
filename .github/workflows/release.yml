@@ -84,11 +84,38 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
+      - name: Install libvips native library (Linux)
+        # libvips must be present as a shared library before pyvips is imported
+        # at build time so that PyInstaller can trace and bundle libvips.so.42
+        # and its transitive dependencies (GLib, GObject, etc.).
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libvips libvips-dev
+
+      - name: Install libvips native library (Windows)
+        # Download the official prebuilt libvips web-variant for Windows x64.
+        # The web variant includes all loaders needed by box3d (webp, jpeg, png,
+        # tiff) without the heif/magick overhead of the "all" variant.
+        # Adding the bin directory to GITHUB_PATH makes libvips-42.dll visible
+        # to both the Python process (pyvips import) and to PyInstaller's DLL
+        # dependency tracer, so the DLL is bundled automatically.
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = "8.15.5"
+          $archive = "vips-dev-w64-web-${version}.zip"
+          $url = "https://github.com/libvips/build-win64-mxe/releases/download/v${version}/${archive}"
+          Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
+          Expand-Archive -Path $archive -DestinationPath C:\vips
+          $binPath = "C:\vips\vips-dev-w64-web-${version}\bin"
+          echo $binPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install runtime dependencies, web + gui extras, and PyInstaller
-        # Install the full package including [web], [gui], and [quality] extras so
-        # that FastAPI + Uvicorn, CustomTkinter, and pyvips bindings are bundled.
-        # pyvips is optional at runtime; if libvips is absent the engine falls back
-        # to the PIL path automatically.
+        # pyvips (Python CFFI bindings) is installed here; the native libvips
+        # library was installed in the platform-specific step above.
+        # PyInstaller will detect libvips through pyvips's CFFI loader and
+        # bundle the shared library automatically.
         run: python -m pip install pyinstaller ".[web,gui,quality]"
 
       - name: Build standalone executable (Linux)
@@ -156,6 +183,7 @@ jobs:
             --collect-all customtkinter \
             --collect-all PIL \
             --collect-all numpy \
+            --collect-all pyvips \
             --hidden-import tkinter \
             --hidden-import _tkinter \
             --hidden-import tkinter.filedialog \
@@ -164,6 +192,7 @@ jobs:
             --hidden-import PIL._tkinter_finder \
             --hidden-import PIL.ImageTk \
             --hidden-import PIL.ImageFilter \
+            --hidden-import pyvips \
             --hidden-import core.pipeline \
             --hidden-import core.models \
             --hidden-import core.registry \
@@ -178,6 +207,8 @@ jobs:
         # --onedir avoids the per-launch extraction to %TEMP% that causes
         # 10-20 s startup delays on Windows (Defender scans extracted files).
         # The folder is zipped in the next step for single-archive distribution.
+        # libvips-42.dll is in PATH (added by the Install libvips step) so
+        # PyInstaller's DLL tracer picks it up and copies it into the bundle.
         run: |
           pyinstaller `
             --onedir `
@@ -189,6 +220,7 @@ jobs:
             --collect-all customtkinter `
             --collect-all PIL `
             --collect-all numpy `
+            --collect-all pyvips `
             --hidden-import tkinter `
             --hidden-import _tkinter `
             --hidden-import tkinter.filedialog `
@@ -197,6 +229,7 @@ jobs:
             --hidden-import PIL._tkinter_finder `
             --hidden-import PIL.ImageTk `
             --hidden-import PIL.ImageFilter `
+            --hidden-import pyvips `
             --hidden-import core.pipeline `
             --hidden-import core.models `
             --hidden-import core.registry `
