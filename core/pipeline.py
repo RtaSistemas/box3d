@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 
 from PIL import Image
 
@@ -138,6 +138,7 @@ class RenderPipeline:
     def run(
         self,
         on_progress: Callable[[int, int, CoverResult], None] | None = None,
+        stop_event: Event | None = None,
     ) -> RenderSummary:
         """
         Execute the full render batch.
@@ -212,7 +213,7 @@ class RenderPipeline:
             futures = {
                 pool.submit(
                     self._process_one, path, template_img,
-                    top_logo_img, bottom_logo_img
+                    top_logo_img, bottom_logo_img, stop_event
                 ): path
                 for path in covers
             }
@@ -231,6 +232,12 @@ class RenderPipeline:
                 # item that causes the trip is still reported to the UI (BUG-04).
                 if on_progress is not None:
                     on_progress(done, total, result)
+
+                # --- Cooperative stop: caller requested cancellation ---
+                if stop_event is not None and stop_event.is_set():
+                    cancelled = sum(1 for f in futures if f.cancel())
+                    log.info("Stop event received — cancelled %d pending task(s).", cancelled)
+                    break
 
                 # --- Circuit Breaker logic ---
                 if result.status == "error":
@@ -270,16 +277,21 @@ class RenderPipeline:
         template_img:    Image.Image,
         top_logo_img:    Image.Image | None,
         bottom_logo_img: Image.Image | None,
+        stop_event:      Event | None = None,
     ) -> CoverResult:
         """
         Process one cover: open, compose, save.
         All disk I/O is concentrated here — engine/ is I/O-free.
+        Checks stop_event before starting work for cooperative cancellation.
         """
         from engine.compositor import compose_cover
 
         rel  = cover_path.relative_to(self.covers_dir)
         stem = str(rel.with_suffix(""))  # relative path used by GUI preview to locate output
         t0   = time.perf_counter()
+
+        if stop_event is not None and stop_event.is_set():
+            return CoverResult(stem=stem, status="skip", elapsed=0.0)
 
         output_path = self.output_dir / rel.with_suffix(f".{self.options.output_format}")
 

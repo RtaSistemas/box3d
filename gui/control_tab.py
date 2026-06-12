@@ -696,8 +696,6 @@ class ControlTab:
         def on_progress(done: int, total: int, result: CoverResult) -> None:
             nonlocal first_stem, _done, _total
             _done, _total = done, total
-            if self._cancel_event.is_set():
-                raise InterruptedError("Render cancelado pelo usuário.")
             if result.status == "ok" and first_stem is None:
                 first_stem = result.stem
             self._queue.put({
@@ -719,12 +717,13 @@ class ControlTab:
                 marquees_dir = marquees_dir or (profile.root / "assets"),
                 no_logos     = no_logos,
             )
-            report = pipeline.run(on_progress=on_progress)
-        except InterruptedError:
-            self._queue.put({"type": "cancelled", "done": _done, "total": _total})
-            return
+            report = pipeline.run(on_progress=on_progress, stop_event=self._cancel_event)
         except Exception as exc:
             self._queue.put({"type": "fatal", "message": str(exc)})
+            return
+
+        if self._cancel_event.is_set():
+            self._queue.put({"type": "cancelled", "done": _done, "total": _total})
             return
 
         self._queue.put({

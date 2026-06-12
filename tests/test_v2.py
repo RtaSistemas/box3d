@@ -909,6 +909,35 @@ class TestPipelineEngineIoPurge:
 
         mock_img.thumbnail.assert_not_called()
 
+    def test_stop_event_cancels_pipeline_cooperatively(self, tmp_path):
+        """stop_event set before run() skips pending covers without raising exceptions."""
+        import threading
+        from core.pipeline import RenderPipeline
+        from core.models import RenderOptions
+        from core.registry import ProfileRegistry
+
+        covers = tmp_path / "covers"
+        covers.mkdir()
+        # Create two covers so we have something to process
+        for name in ("a.png", "b.png"):
+            Image.new("RGBA", (100, 100), (1, 2, 3, 255)).save(str(covers / name))
+
+        out = tmp_path / "out"
+        profile = ProfileRegistry(PROFILES).load().get("mvs")
+
+        stop = threading.Event()
+        stop.set()   # pre-set: _process_one checks event before starting work
+
+        pipeline = RenderPipeline(
+            profile=profile, covers_dir=covers, output_dir=out,
+            options=RenderOptions(workers=1), logo_paths={},
+        )
+        report = pipeline.run(stop_event=stop)
+
+        # With stop pre-set, every cover returns "skip" — none should error
+        assert report.failed == 0
+        assert report.succeeded == 0
+
     def test_compositor_module_has_no_image_open_call(self):
         """engine.compositor must contain no Image.open() call (zero I/O contract)."""
         import ast, inspect
