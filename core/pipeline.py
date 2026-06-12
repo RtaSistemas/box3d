@@ -45,7 +45,8 @@ def _safe_open(path: Path) -> Image.Image:
     If the image exceeds 8192px on either axis, it is immediately
     downscaled proportionally before being returned.
     """
-    img = Image.open(path).convert("RGBA")
+    with Image.open(path) as raw:
+        img = raw.convert("RGBA")
     if img.width > 8192 or img.height > 8192:
         log.warning("OOM Hardening: downscaling %s (%dx%d → ≤8192px)",
                     path.name, img.width, img.height)
@@ -83,6 +84,7 @@ class RenderPipeline:
         self.options      = options
         self.logo_paths   = logo_paths or {}
         self.marquees_dir = marquees_dir or (profile.root / "assets")
+        self._marquees_explicit = marquees_dir is not None
         self.no_logos     = no_logos
         self._stats: dict[str, int] = {"ok": 0, "skip": 0, "error": 0, "dry": 0}
         self._lock  = Lock()
@@ -236,7 +238,8 @@ class RenderPipeline:
                 else:
                     consecutive_errors = 0
 
-                total_errors = self._stats.get("error", 0)
+                with self._lock:
+                    total_errors = self._stats.get("error", 0)
 
                 if consecutive_errors > _CB_MAX_CONSECUTIVE or \
                    total_errors > error_threshold:
@@ -344,7 +347,7 @@ class RenderPipeline:
             if path is not None and not path.exists():
                 log.error("--%s-logo: file not found: %s", label, path)
                 ok = False
-        if self.marquees_dir and not self.marquees_dir.is_dir():
+        if self._marquees_explicit and self.marquees_dir and not self.marquees_dir.is_dir():
             log.warning("Marquees directory not found: %s — no game logos", self.marquees_dir)
         return ok
 

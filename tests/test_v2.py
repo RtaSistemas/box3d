@@ -884,7 +884,8 @@ class TestPipelineEngineIoPurge:
         type(mock_img).height = PropertyMock(return_value=100)
 
         with patch("PIL.Image.open") as mock_open:
-            mock_open.return_value.convert.return_value = mock_img
+            # _safe_open uses `with Image.open(...) as raw:` — mock the context manager
+            mock_open.return_value.__enter__.return_value.convert.return_value = mock_img
             _safe_open(img_path)
 
         mock_img.thumbnail.assert_called_once_with((8192, 8192), Image.BICUBIC)
@@ -903,7 +904,7 @@ class TestPipelineEngineIoPurge:
         type(mock_img).height = PropertyMock(return_value=1000)
 
         with patch("PIL.Image.open") as mock_open:
-            mock_open.return_value.convert.return_value = mock_img
+            mock_open.return_value.__enter__.return_value.convert.return_value = mock_img
             _safe_open(img_path)
 
         mock_img.thumbnail.assert_not_called()
