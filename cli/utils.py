@@ -7,10 +7,7 @@ No side effects, no I/O at import time.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
-
-log = logging.getLogger("box3d.cli")
 
 
 def auto_logo(assets_dir: Path, stem: str) -> Path | None:
@@ -25,6 +22,9 @@ def auto_logo(assets_dir: Path, stem: str) -> Path | None:
 def parse_rgb_str(rgb_str: str) -> str | None:
     """Convert ``"R,G,B"`` to the diagonal matrix string used by
     :func:`~engine.blending.apply_color_matrix`.
+
+    Returns None (silently) when parsing fails — callers are responsible
+    for emitting user-facing error messages.
     """
     normalised = rgb_str.replace(";", ",")
     try:
@@ -36,6 +36,5 @@ def parse_rgb_str(rgb_str: str) -> str | None:
             if val < 0:
                 raise ValueError(f"channel {label} must be >= 0")
         return f"{r} 0 0  0 {g} 0  0 0 {b}"
-    except Exception as exc:
-        log.warning("parse_rgb_str: %r — %s — ignored", rgb_str, exc)
+    except Exception:
         return None

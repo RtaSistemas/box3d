@@ -136,7 +136,8 @@ _PROFILES = _bootstrap_profiles()   # editable profiles/ — next to the exe
 # ---------------------------------------------------------------------------
 
 _INSTRUCTIONS_TEMPLATE = Path(__file__).parent / "instructions_template.txt"
-_VERSION = "3.0.0RC"
+
+from core.version import __version__ as _VERSION  # noqa: E402
 
 
 def _bootstrap_instructions() -> None:

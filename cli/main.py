@@ -23,6 +23,7 @@ from cli.bootstrap import (
 from cli.utils import auto_logo as _auto_logo, parse_rgb_str
 from core.models   import CoverResult, RenderOptions, RenderSummary
 from core.registry import ProfileRegistry, ProfileError
+from core.version  import __version__
 
 log = logging.getLogger("box3d.cli")
 
@@ -47,7 +48,7 @@ def _workers_type(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="box3d",
-        description="box3d — Arcade game 3D box art generator (v2.0.0)",
+        description=f"box3d — Arcade game 3D box art generator (v{__version__})",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
