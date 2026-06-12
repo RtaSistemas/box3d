@@ -32,6 +32,7 @@ import platform
 import queue
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -71,6 +72,9 @@ app.add_middleware(
 _progress_queue: queue.Queue[dict] = queue.Queue()
 _last_output_dir: Path | None = None   # set by _run_pipeline; read by /api/open-folder
 _render_lock     = asyncio.Lock()       # prevents concurrent render sessions
+# Single-thread executor reserved for the render pipeline so it never ties
+# up a slot from asyncio's shared default pool for the full render duration.
+_render_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="box3d-render")
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +321,8 @@ async def start_render(
 
     async def _locked_run() -> None:
         async with _render_lock:
-            await asyncio.to_thread(_run_pipeline)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_render_executor, _run_pipeline)
 
     background_tasks.add_task(_locked_run)
 
