@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import OrderedDict
 from functools import lru_cache
 
 import numpy as np
@@ -83,14 +84,20 @@ except Exception:
 #             values; requires feathering for smooth edges
 #   bilinear — bilinear; fastest but lowest quality
 # Override via BOX3D_WARP_BACKEND environment variable before process start.
+_VALID_VIPS_KERNELS = frozenset({"lbb", "nohalo", "bicubic", "bilinear"})
 _VIPS_KERNEL: str = os.environ.get("BOX3D_WARP_BACKEND", "lbb")
+if _VIPS_KERNEL not in _VALID_VIPS_KERNELS:
+    raise ValueError(
+        f"BOX3D_WARP_BACKEND={_VIPS_KERNEL!r} is not a valid pyvips kernel. "
+        f"Valid values: {sorted(_VALID_VIPS_KERNELS)}"
+    )
 
-# Cache of float32 coordinate arrays keyed by (canvas_w, canvas_h, coeffs-tuple).
-# Storing numpy arrays (not pyvips Images) avoids a GLib/cffi segfault that
-# occurs when pyvips Image objects are finalized during Python interpreter shutdown.
-# pyvips.Image.new_from_array wraps a numpy array with zero copy; the array
-# must stay alive for the duration of the pyvips call — the cache guarantees this.
-_COORD_CACHE: dict[tuple, np.ndarray] = {}
+# LRU cache of float32 coordinate arrays keyed by (canvas_w, canvas_h, coeffs-tuple).
+# Capped at _COORD_CACHE_MAX entries (~5.6 MB each for 700×1000 canvas) to bound
+# memory growth in long-lived server processes that render multiple profiles.
+# Storing numpy arrays (not pyvips Images) avoids a GLib/cffi segfault at shutdown.
+_COORD_CACHE_MAX = 16
+_COORD_CACHE: OrderedDict[tuple, np.ndarray] = OrderedDict()
 
 
 # ---------------------------------------------------------------------------
@@ -173,13 +180,20 @@ def _get_coord_array(
     Cache hit:  O(1) dict lookup, no allocation.
     """
     key = (canvas_w, canvas_h, coeffs)
-    if key not in _COORD_CACHE:
-        a0, a1, a2, a3, a4, a5, a6, a7 = coeffs
-        ys, xs = np.mgrid[0:canvas_h, 0:canvas_w].astype(np.float32)
-        denom  = a6 * xs + a7 * ys + 1.0
-        src_x  = (a0 * xs + a1 * ys + a2) / denom
-        src_y  = (a3 * xs + a4 * ys + a5) / denom
-        _COORD_CACHE[key] = np.stack([src_x, src_y], axis=2)  # (H, W, 2) float32
+    if key in _COORD_CACHE:
+        _COORD_CACHE.move_to_end(key)   # mark as recently used
+        return _COORD_CACHE[key]
+
+    a0, a1, a2, a3, a4, a5, a6, a7 = coeffs
+    ys, xs = np.mgrid[0:canvas_h, 0:canvas_w].astype(np.float32)
+    denom  = a6 * xs + a7 * ys + 1.0
+    src_x  = (a0 * xs + a1 * ys + a2) / denom
+    src_y  = (a3 * xs + a4 * ys + a5) / denom
+    _COORD_CACHE[key] = np.stack([src_x, src_y], axis=2)  # (H, W, 2) float32
+
+    if len(_COORD_CACHE) > _COORD_CACHE_MAX:
+        _COORD_CACHE.popitem(last=False)  # evict least recently used
+
     return _COORD_CACHE[key]
 
 

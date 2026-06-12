@@ -109,8 +109,21 @@ class PathCheckRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+_registry_cache: ProfileRegistry | None = None
+_registry_mtime: float = 0.0
+
+
 def _get_registry() -> ProfileRegistry:
-    return ProfileRegistry(str(_PROFILES)).load()
+    """Return a cached ProfileRegistry, refreshed when profiles/ mtime changes."""
+    global _registry_cache, _registry_mtime
+    try:
+        mtime = _PROFILES.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    if _registry_cache is None or mtime != _registry_mtime:
+        _registry_cache = ProfileRegistry(str(_PROFILES)).load()
+        _registry_mtime = mtime
+    return _registry_cache
 
 
 # ---------------------------------------------------------------------------

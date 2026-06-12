@@ -1541,6 +1541,33 @@ class TestWarpBackend:
             f"Unexpected _VIPS_KERNEL value: {ep._VIPS_KERNEL!r}"
         )
 
+    def test_coord_cache_evicts_oldest_entry(self):
+        """_COORD_CACHE must not exceed _COORD_CACHE_MAX entries."""
+        import engine.perspective as ep
+
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed")
+
+        original_cache = ep._COORD_CACHE
+        from collections import OrderedDict
+        ep._COORD_CACHE = OrderedDict()
+
+        try:
+            max_entries = ep._COORD_CACHE_MAX
+            # Fill cache beyond its limit using different canvas sizes
+            for w in range(max_entries + 3):
+                src = Image.new("RGBA", (10, 10), (128, 128, 128, 255))
+                pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
+                ep._get_coord_array(100 + w, 100, ep.solve_coefficients(
+                    [(0, 0), (10, 0), (10, 10), (0, 10)], pts,
+                ))
+            assert len(ep._COORD_CACHE) <= max_entries, (
+                f"Cache grew to {len(ep._COORD_CACHE)} entries, "
+                f"exceeding limit of {max_entries}"
+            )
+        finally:
+            ep._COORD_CACHE = original_cache
+
 
 # ===========================================================================
 # Input validation (F-04, F-05, F-08 remediation coverage)
