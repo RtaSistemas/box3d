@@ -152,7 +152,13 @@ jobs:
 
       - name: Build standalone executable (Linux)
         if: matrix.os == 'ubuntu-latest'
+        # Resolve libvips.so.42 path via ldconfig before calling PyInstaller.
+        # --add-binary places the .so at the ROOT of sys._MEIPASS, where the
+        # PyInstaller bootloader sets LD_LIBRARY_PATH so cffi.dlopen() finds it.
+        # This is explicit and does not rely on --collect-all's binary placement.
         run: |
+          LIBVIPS=$(ldconfig -p | grep 'libvips\.so\.' | awk '{print $NF}' | head -1)
+          echo "Bundling libvips: $LIBVIPS"
           pyinstaller \
             --onefile \
             --strip \
@@ -161,6 +167,7 @@ jobs:
             --add-data "cli/instructions_template.txt:cli" \
             --add-data "web/ui:web/ui" \
             --add-data "tools:tools" \
+            --add-binary "$LIBVIPS:." \
             --hidden-import uvicorn.logging \
             --hidden-import uvicorn.loops \
             --hidden-import uvicorn.loops.auto \
@@ -204,7 +211,10 @@ jobs:
 
       - name: Build GUI executable (Linux)
         if: matrix.os == 'ubuntu-latest'
+        # Same --add-binary strategy as the CLI build above.
         run: |
+          LIBVIPS=$(ldconfig -p | grep 'libvips\.so\.' | awk '{print $NF}' | head -1)
+          echo "Bundling libvips: $LIBVIPS"
           pyinstaller \
             --onefile \
             --strip \
@@ -212,6 +222,7 @@ jobs:
             --name ${{ matrix.gui_build_name }} \
             --add-data "profiles:profiles" \
             --add-data "cli/instructions_template.txt:cli" \
+            --add-binary "$LIBVIPS:." \
             --collect-all customtkinter \
             --collect-all PIL \
             --collect-all numpy \
