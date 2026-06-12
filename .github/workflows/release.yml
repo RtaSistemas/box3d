@@ -196,29 +196,39 @@ jobs:
 
       - name: Build standalone executable (Windows)
         if: matrix.os == 'windows-latest'
-        # Use semicolon as --add-data separator (required on Windows).
+        # pyvips loads libvips-42.dll at runtime via cffi.dlopen() — PyInstaller
+        # cannot trace this dependency statically.  We use --add-binary to place
+        # every DLL from the vips bin directory at the ROOT of sys._MEIPASS (the
+        # "." destination), which is where both cffi.dlopen() and the Windows DLL
+        # loader search.  DLLs in a subdirectory (e.g. pyvips/) are not found.
+        shell: pwsh
         run: |
-          pyinstaller `
-            --onefile `
-            --name ${{ matrix.build_name }} `
-            --add-data "profiles;profiles" `
-            --add-data "cli/instructions_template.txt;cli" `
-            --add-data "web/ui;web/ui" `
-            --add-data "tools;tools" `
-            --hidden-import uvicorn.logging `
-            --hidden-import uvicorn.loops `
-            --hidden-import uvicorn.loops.auto `
-            --hidden-import uvicorn.protocols `
-            --hidden-import uvicorn.protocols.http `
-            --hidden-import uvicorn.protocols.http.auto `
-            --hidden-import uvicorn.protocols.websockets `
-            --hidden-import uvicorn.protocols.websockets.auto `
-            --hidden-import uvicorn.lifespan `
-            --hidden-import uvicorn.lifespan.on `
-            --hidden-import fastapi `
-            --collect-all pyvips `
-            --hidden-import pyvips `
-            cli/main.py
+          $dllArgs = @(Get-ChildItem -Path $env:VIPS_BIN -Filter "*.dll" |
+              ForEach-Object { "--add-binary"; "$($_.FullName);." })
+          Write-Host "Adding $($dllArgs.Count / 2) vips DLL(s) at bundle root via --add-binary"
+          $baseArgs = @(
+            "--onefile",
+            "--name", "${{ matrix.build_name }}",
+            "--add-data", "profiles;profiles",
+            "--add-data", "cli/instructions_template.txt;cli",
+            "--add-data", "web/ui;web/ui",
+            "--add-data", "tools;tools",
+            "--hidden-import", "uvicorn.logging",
+            "--hidden-import", "uvicorn.loops",
+            "--hidden-import", "uvicorn.loops.auto",
+            "--hidden-import", "uvicorn.protocols",
+            "--hidden-import", "uvicorn.protocols.http",
+            "--hidden-import", "uvicorn.protocols.http.auto",
+            "--hidden-import", "uvicorn.protocols.websockets",
+            "--hidden-import", "uvicorn.protocols.websockets.auto",
+            "--hidden-import", "uvicorn.lifespan",
+            "--hidden-import", "uvicorn.lifespan.on",
+            "--hidden-import", "fastapi",
+            "--collect-all", "pyvips",
+            "--hidden-import", "pyvips",
+            "cli/main.py"
+          )
+          & pyinstaller @baseArgs @dllArgs
 
       - name: Build GUI executable (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -261,37 +271,44 @@ jobs:
         # --onedir avoids the per-launch extraction to %TEMP% that causes
         # 10-20 s startup delays on Windows (Defender scans extracted files).
         # The folder is zipped in the next step for single-archive distribution.
-        # libvips-42.dll is in PATH (added by the Install libvips step) so
-        # PyInstaller's DLL tracer picks it up and copies it into the bundle.
+        # All vips DLLs are placed at the bundle root via --add-binary so that
+        # cffi.dlopen('libvips-42.dll') and transitive DLL loads (libglib etc.)
+        # succeed from the Windows DLL search path (exe directory).
+        shell: pwsh
         run: |
-          pyinstaller `
-            --onedir `
-            --noconsole `
-            --icon assets/box3d.ico `
-            --name ${{ matrix.gui_build_name }} `
-            --add-data "profiles;profiles" `
-            --add-data "cli/instructions_template.txt;cli" `
-            --collect-all customtkinter `
-            --collect-all PIL `
-            --collect-all numpy `
-            --collect-all pyvips `
-            --hidden-import tkinter `
-            --hidden-import _tkinter `
-            --hidden-import tkinter.filedialog `
-            --hidden-import tkinter.messagebox `
-            --hidden-import tkinter.colorchooser `
-            --hidden-import PIL._tkinter_finder `
-            --hidden-import PIL.ImageTk `
-            --hidden-import PIL.ImageFilter `
-            --hidden-import pyvips `
-            --hidden-import core.pipeline `
-            --hidden-import core.models `
-            --hidden-import core.registry `
-            --hidden-import engine.compositor `
-            --hidden-import engine.perspective `
-            --hidden-import engine.blending `
-            --hidden-import engine.spine_builder `
-            gui/app.py
+          $dllArgs = @(Get-ChildItem -Path $env:VIPS_BIN -Filter "*.dll" |
+              ForEach-Object { "--add-binary"; "$($_.FullName);." })
+          Write-Host "Adding $($dllArgs.Count / 2) vips DLL(s) at bundle root via --add-binary"
+          $baseArgs = @(
+            "--onedir",
+            "--noconsole",
+            "--icon", "assets/box3d.ico",
+            "--name", "${{ matrix.gui_build_name }}",
+            "--add-data", "profiles;profiles",
+            "--add-data", "cli/instructions_template.txt;cli",
+            "--collect-all", "customtkinter",
+            "--collect-all", "PIL",
+            "--collect-all", "numpy",
+            "--collect-all", "pyvips",
+            "--hidden-import", "tkinter",
+            "--hidden-import", "_tkinter",
+            "--hidden-import", "tkinter.filedialog",
+            "--hidden-import", "tkinter.messagebox",
+            "--hidden-import", "tkinter.colorchooser",
+            "--hidden-import", "PIL._tkinter_finder",
+            "--hidden-import", "PIL.ImageTk",
+            "--hidden-import", "PIL.ImageFilter",
+            "--hidden-import", "pyvips",
+            "--hidden-import", "core.pipeline",
+            "--hidden-import", "core.models",
+            "--hidden-import", "core.registry",
+            "--hidden-import", "engine.compositor",
+            "--hidden-import", "engine.perspective",
+            "--hidden-import", "engine.blending",
+            "--hidden-import", "engine.spine_builder",
+            "gui/app.py"
+          )
+          & pyinstaller @baseArgs @dllArgs
 
       - name: Zip Windows GUI folder
         if: matrix.os == 'windows-latest'
