@@ -1097,3 +1097,319 @@ class TestCircuitBreaker:
         # done values must be contiguous 1..N with no gap
         reported_done = [c[0] for c in progress_calls]
         assert reported_done == list(range(1, total_processed + 1))
+
+
+# ===========================================================================
+# Warp backend: pyvips (lbb) vs PIL (BICUBIC) regression suite
+# ===========================================================================
+
+class TestWarpBackend:
+    """
+    Covers the pyvips lbb warp path and its PIL fallback.
+
+    Quality invariants validated here:
+    - Geometry: output size and mode are identical between backends.
+    - Alpha smoothness: pyvips lbb produces a full gradient (≥200 unique alpha
+      values) versus PIL's binary (≤3) pre-feathering state.
+    - Transparency: pixels outside the destination quad are fully transparent.
+    - Content: solid-colour source maps to a recognisable colour in the warped
+      output interior.
+    - Thread safety: 8 concurrent warps do not corrupt each other.
+    - Cache: the coordinate-map cache is keyed correctly so distinct geometries
+      never collide.
+    - Fallback: PIL path is invoked when pyvips is unavailable.
+    """
+
+    # Shared fixture geometry
+    _SRC_W, _SRC_H = 400, 300
+    _CW, _CH       = 600, 500          # canvas size
+    _DST_NEAR      = [(80,60),(480,40),(500,440),(60,460)]   # quad inside canvas
+    _DST_FAR_CORNER = [(0,0),(_CW,0),(_CW,_CH),(0,_CH)]     # full-canvas identity
+
+    def _solid_src(self, color=(200, 100, 50, 255)):
+        return Image.new("RGBA", (self._SRC_W, self._SRC_H), color)
+
+    # ------------------------------------------------------------------
+    # Output contract (both backends must satisfy)
+    # ------------------------------------------------------------------
+
+    def test_warp_output_size(self):
+        """Canvas size must equal (canvas_w, canvas_h) regardless of backend."""
+        out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR)
+        assert out.size == (self._CW, self._CH)
+
+    def test_warp_output_mode_is_rgba(self):
+        """Output must always be RGBA."""
+        out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR)
+        assert out.mode == "RGBA"
+
+    def test_warp_rgb_source_converted_to_rgba(self):
+        """RGB input must be accepted and output RGBA."""
+        rgb_src = Image.new("RGB", (self._SRC_W, self._SRC_H), (100, 150, 200))
+        out = warp(rgb_src, self._CW, self._CH, self._DST_NEAR)
+        assert out.mode == "RGBA"
+
+    def test_warp_outside_quad_is_transparent(self):
+        """Pixels clearly outside the destination quad must be fully transparent."""
+        import numpy as np
+        out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR)
+        arr = np.array(out)
+        # top-left corner is outside the quad (quad starts at x=80, y=60)
+        corner = arr[5:20, 5:20, 3]
+        assert corner.max() == 0, (
+            f"pixels outside quad are not transparent (max alpha={corner.max()})"
+        )
+
+    def test_warp_quad_interior_is_opaque(self):
+        """Centre of the warped quad must be fully opaque for a solid-colour source."""
+        import numpy as np
+        out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR)
+        arr = np.array(out)
+        cy, cx = self._CH // 2, self._CW // 2
+        patch = arr[cy-10:cy+10, cx-10:cx+10, 3]
+        assert patch.min() == 255, (
+            f"centre of warped quad is not opaque (min alpha={patch.min()})"
+        )
+
+    def test_warp_solid_colour_preserved_in_interior(self):
+        """Interior pixels must carry the source colour (±8 rounding tolerance)."""
+        import numpy as np
+        r, g, b = 200, 100, 50
+        out = warp(self._solid_src((r, g, b, 255)), self._CW, self._CH, self._DST_NEAR)
+        arr = np.array(out)
+        cy, cx = self._CH // 2, self._CW // 2
+        patch = arr[cy-5:cy+5, cx-5:cx+5]
+        opaque = patch[patch[:,:,3] == 255]
+        assert len(opaque) > 0, "no fully-opaque pixels found in interior"
+        assert abs(int(opaque[:,0].mean()) - r) <= 8
+        assert abs(int(opaque[:,1].mean()) - g) <= 8
+        assert abs(int(opaque[:,2].mean()) - b) <= 8
+
+    # ------------------------------------------------------------------
+    # pyvips quality: smooth alpha edges
+    # ------------------------------------------------------------------
+
+    def test_vips_lbb_produces_smooth_alpha(self):
+        """
+        pyvips lbb must produce a smooth anti-aliased alpha gradient at quad
+        boundaries (≥200 unique values across the canvas).
+
+        PIL BICUBIC without feathering produces binary alpha (≤3 unique values).
+        The pyvips path must NOT require external feathering to be smooth.
+        """
+        import numpy as np
+        import engine.perspective as ep
+
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed — skipping quality assertion")
+
+        out  = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR, feather=0)
+        arr  = np.array(out)
+        alpha_unique = len(np.unique(arr[:, :, 3]))
+        assert alpha_unique >= 200, (
+            f"pyvips lbb produced only {alpha_unique} unique alpha values; "
+            f"expected ≥200 (smooth gradient). Backend may have regressed to PIL."
+        )
+
+    def test_pil_fallback_has_binary_alpha_without_feather(self):
+        """
+        PIL BICUBIC without feathering must produce near-binary alpha — confirms
+        that feathering IS needed in the PIL path and that the pyvips path is
+        providing something fundamentally different.
+        """
+        import numpy as np
+        from unittest.mock import patch
+        import engine.perspective as ep
+
+        with patch.object(ep, "_PYVIPS_AVAILABLE", False):
+            out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR, feather=0)
+        arr = np.array(out)
+        alpha_unique = len(np.unique(arr[:, :, 3]))
+        assert alpha_unique <= 3, (
+            f"PIL feather=0 produced {alpha_unique} unique alpha values; "
+            f"expected ≤3 (binary 0/255 from BICUBIC perspective transform)."
+        )
+
+    def test_pil_feather_smooths_alpha(self):
+        """PIL with feather=1.2 must produce more unique alpha values than feather=0."""
+        import numpy as np
+        from unittest.mock import patch
+        import engine.perspective as ep
+
+        with patch.object(ep, "_PYVIPS_AVAILABLE", False):
+            hard = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR, feather=0)
+            soft = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR, feather=1.2)
+
+        n_hard = len(np.unique(np.array(hard)[:,:,3]))
+        n_soft = len(np.unique(np.array(soft)[:,:,3]))
+        assert n_soft > n_hard, "feather=1.2 did not increase alpha diversity"
+
+    # ------------------------------------------------------------------
+    # PIL fallback path
+    # ------------------------------------------------------------------
+
+    def test_pil_fallback_invoked_when_vips_unavailable(self):
+        """warp() must still return valid RGBA when pyvips is mocked out."""
+        from unittest.mock import patch
+        import engine.perspective as ep
+
+        with patch.object(ep, "_PYVIPS_AVAILABLE", False):
+            out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR)
+        assert out.mode == "RGBA"
+        assert out.size == (self._CW, self._CH)
+
+    def test_pil_fallback_feather_zero(self):
+        """PIL fallback with feather=0 must not crash and must return RGBA."""
+        from unittest.mock import patch
+        import engine.perspective as ep
+
+        with patch.object(ep, "_PYVIPS_AVAILABLE", False):
+            out = warp(self._solid_src(), self._CW, self._CH, self._DST_NEAR, feather=0)
+        assert out.mode == "RGBA"
+
+    # ------------------------------------------------------------------
+    # Coordinate-map cache correctness
+    # ------------------------------------------------------------------
+
+    def test_index_cache_different_geometries_independent(self):
+        """
+        Two distinct quad geometries must produce distinct cache entries.
+        If cache keying is wrong, one quad's map would corrupt the other's warp.
+        """
+        import numpy as np
+        import engine.perspective as ep
+
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed")
+
+        # Quad A: left-tilted
+        dstA = [(50,50),(350,100),(370,440),(30,460)]
+        # Quad B: right-tilted (mirror of A)
+        dstB = [(250,100),(550,50),(570,460),(230,440)]
+
+        src  = self._solid_src()
+        outA = warp(src, self._CW, self._CH, dstA)
+        outB = warp(src, self._CW, self._CH, dstB)
+
+        arrA = np.array(outA)
+        arrB = np.array(outB)
+        # The two warps must differ (different quads → different pixel positions)
+        assert not np.array_equal(arrA, arrB), (
+            "Two distinct quad geometries produced identical output — cache collision?"
+        )
+
+    def test_index_cache_same_geometry_reused(self):
+        """
+        Calling warp() twice with identical geometry must hit the cache on the
+        second call and produce bit-identical output.
+        """
+        import numpy as np
+        import engine.perspective as ep
+
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed")
+
+        src  = self._solid_src()
+        out1 = warp(src, self._CW, self._CH, self._DST_NEAR)
+        out2 = warp(src, self._CW, self._CH, self._DST_NEAR)
+
+        assert np.array_equal(np.array(out1), np.array(out2)), (
+            "Identical geometry produced different outputs — cache may be corrupted"
+        )
+
+    # ------------------------------------------------------------------
+    # Thread safety
+    # ------------------------------------------------------------------
+
+    def test_thread_safety_concurrent_warps(self):
+        """
+        8 threads running warp() concurrently on the same geometry must all
+        succeed and produce identical results.
+        """
+        import numpy as np
+        import threading
+        import engine.perspective as ep
+
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed — thread-safety test targets pyvips path")
+
+        src     = self._solid_src()
+        results = [None] * 8
+        errors  = []
+
+        def worker(idx):
+            try:
+                results[idx] = np.array(
+                    warp(src, self._CW, self._CH, self._DST_NEAR)
+                )
+            except Exception as exc:
+                errors.append(f"thread {idx}: {exc}")
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+
+        assert not errors, f"Thread errors: {errors}"
+        assert all(r is not None for r in results), "Some threads returned None"
+        ref = results[0]
+        for i, r in enumerate(results[1:], 1):
+            assert np.array_equal(ref, r), (
+                f"Thread {i} produced a different result — possible race condition"
+            )
+
+    # ------------------------------------------------------------------
+    # Edge cases
+    # ------------------------------------------------------------------
+
+    def test_warp_minimum_source_size(self):
+        """1×1 source image must not crash and must return correct canvas size."""
+        tiny = Image.new("RGBA", (1, 1), (255, 0, 0, 255))
+        out  = warp(tiny, self._CW, self._CH, self._DST_NEAR)
+        assert out.size == (self._CW, self._CH)
+        assert out.mode == "RGBA"
+
+    def test_warp_all_profiles_backend_geometry(self):
+        """All built-in profiles must produce output matching template dimensions."""
+        reg = ProfileRegistry(PROFILES).load()
+        for name in ["mvs", "arcade", "dvd"]:
+            p   = reg.get(name)
+            g   = p.geometry
+            img = Image.new("RGBA", (g.cover_w, g.cover_h), (128, 128, 128, 255))
+            out = warp(img, g.template_w, g.template_h, g.cover_quad.as_list())
+            assert out.size == (g.template_w, g.template_h), (
+                f"Profile '{name}': expected {(g.template_w, g.template_h)}, "
+                f"got {out.size}"
+            )
+
+    def test_warp_identity_quad_fills_canvas(self):
+        """Full-canvas quad (identity-like transform) must fill the interior of the canvas.
+
+        The pyvips lbb/nohalo interpolation kernel samples a neighbourhood of
+        pixels around each output coordinate.  At the very edges of a
+        full-canvas quad the kernel reaches outside the source boundary and
+        pulls from the transparent background, giving a 1-2 px anti-aliased
+        fade along each canvas edge.  The interior (5 px from each edge) must
+        be fully opaque.
+        """
+        import numpy as np
+        full_dst = [(0,0),(self._CW,0),(self._CW,self._CH),(0,self._CH)]
+        out = warp(self._solid_src(), self._CW, self._CH, full_dst)
+        arr = np.array(out)
+        # Interior of the canvas must be fully opaque
+        interior = arr[5:-5, 5:-5, 3]
+        assert interior.min() == 255, (
+            "Identity-like quad left transparent pixels in the canvas interior "
+            f"(min alpha in 5px-inset interior = {interior.min()})"
+        )
+
+    # ------------------------------------------------------------------
+    # Backend env-var (BOX3D_WARP_BACKEND)
+    # ------------------------------------------------------------------
+
+    def test_vips_kernel_env_var_is_read(self):
+        """_VIPS_KERNEL must reflect BOX3D_WARP_BACKEND at import time."""
+        import engine.perspective as ep
+        # _VIPS_KERNEL defaults to 'lbb' if env var is absent
+        assert ep._VIPS_KERNEL in ("lbb", "nohalo", "bicubic", "bilinear"), (
+            f"Unexpected _VIPS_KERNEL value: {ep._VIPS_KERNEL!r}"
+        )

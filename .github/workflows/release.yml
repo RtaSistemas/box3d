@@ -85,9 +85,11 @@ jobs:
         run: python -m pip install --upgrade pip
 
       - name: Install runtime dependencies, web + gui extras, and PyInstaller
-        # Install the full package including [web] and [gui] extras so that
-        # FastAPI + Uvicorn and CustomTkinter are available for bundling.
-        run: python -m pip install pyinstaller ".[web,gui]"
+        # Install the full package including [web], [gui], and [quality] extras so
+        # that FastAPI + Uvicorn, CustomTkinter, and pyvips bindings are bundled.
+        # pyvips is optional at runtime; if libvips is absent the engine falls back
+        # to the PIL path automatically.
+        run: python -m pip install pyinstaller ".[web,gui,quality]"
 
       - name: Build standalone executable (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -111,6 +113,8 @@ jobs:
             --hidden-import uvicorn.lifespan \
             --hidden-import uvicorn.lifespan.on \
             --hidden-import fastapi \
+            --collect-all pyvips \
+            --hidden-import pyvips \
             cli/main.py
 
       - name: Build standalone executable (Windows)
@@ -135,6 +139,8 @@ jobs:
             --hidden-import uvicorn.lifespan `
             --hidden-import uvicorn.lifespan.on `
             --hidden-import fastapi `
+            --collect-all pyvips `
+            --hidden-import pyvips `
             cli/main.py
 
       - name: Build GUI executable (Linux)
