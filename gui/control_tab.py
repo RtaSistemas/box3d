@@ -616,25 +616,50 @@ class ControlTab:
             messagebox.showerror("Error", f"Profile '{profile_name}' not found.")
             return
 
-        covers_dir = Path(self._covers_var.get().strip())
-        output_dir = Path(self._output_var.get().strip())
+        # F-21: validate string first, then construct Path, then mkdir
+        covers_str = self._covers_var.get().strip()
+        output_str = self._output_var.get().strip()
+
+        if not covers_str:
+            messagebox.showerror("Error", "Covers directory cannot be empty.")
+            return
+        if not output_str:
+            messagebox.showerror("Error", "Output directory cannot be empty.")
+            return
+
+        covers_dir = Path(covers_str)
+        output_dir = Path(output_str)
 
         if not covers_dir.is_dir():
             messagebox.showerror("Error", f"Covers directory does not exist:\n{covers_dir}")
             return
-        if not self._output_var.get().strip():
-            messagebox.showerror("Error", "Output directory cannot be empty.")
-            return
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # F-09: parse each numeric field independently with field-specific messages
+        workers_raw = self._workers_var.get().strip()
         try:
-            workers_raw = self._workers_var.get().strip()
             workers = os.cpu_count() or 1 if workers_raw == "auto" else int(workers_raw or 4)
-            blur    = int(self._blur_var.get()    or 20)
-            darken  = int(self._darken_var.get()  or 180)
+            if workers < 1:
+                raise ValueError
         except ValueError:
-            messagebox.showerror("Error", "Workers must be an integer or 'auto'.")
+            messagebox.showerror("Error", "Workers must be a positive integer or 'auto'.")
+            return
+
+        try:
+            blur = int(self._blur_var.get() or 20)
+            if not (0 <= blur <= 100):
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Error", "Blur radius must be an integer between 0 and 100.")
+            return
+
+        try:
+            darken = int(self._darken_var.get() or 180)
+            if not (0 <= darken <= 255):
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Error", "Darken alpha must be an integer between 0 and 255.")
             return
 
         spine_raw = self._spine_source_var.get()
