@@ -18,7 +18,7 @@ from PIL import Image, ImageFilter
 from core.models import Profile, RenderOptions
 from engine.blending   import (
     alpha_weighted_screen, apply_color_matrix,
-    build_silhouette_mask, dst_in,
+    build_silhouette_mask, dst_in, linear_alpha_composite,
 )
 from engine.perspective import resize_for_fit, warp
 from engine.spine_builder import build_spine
@@ -99,6 +99,8 @@ def _composite(
     )
 
     # Step 1 — Spine warp
+    # canvas is fully transparent → PIL alpha_composite is equivalent to
+    # linear_alpha_composite here (no actual blending occurs), and faster.
     spine_src    = resize_for_fit(spine_img, geom.spine_w, geom.spine_h, "stretch")
     spine_warped = warp(spine_src, tw, th, geom.spine_quad.as_list())
     canvas       = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
@@ -107,10 +109,13 @@ def _composite(
     # Step 2 — Cover warp + mild unsharp mask (RGB only) to recover sharpness
     #           lost during perspective resampling; alpha is left untouched so
     #           the feathered edge from warp() is preserved.
+    # linear_alpha_composite is used here because the cover has a feathered
+    # alpha boundary (~2 px from lbb warp) where real blending over the spine
+    # occurs; linear blending prevents darkening at those boundary pixels.
     cover_src    = resize_for_fit(cover_img, geom.cover_w, geom.cover_h, geom.cover_fit)
     cover_warped = warp(cover_src, tw, th, geom.cover_quad.as_list())
     cover_warped = _sharpen_rgb(cover_warped)
-    canvas       = Image.alpha_composite(canvas, cover_warped)
+    canvas       = linear_alpha_composite(canvas, cover_warped)
 
     # Step 3 — Alpha-weighted Screen blend of the template
     canvas = alpha_weighted_screen(canvas, colored_template)

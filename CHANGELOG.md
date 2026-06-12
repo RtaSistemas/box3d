@@ -8,7 +8,59 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **pyvips warp backend** (`engine/perspective.py`) — When `pyvips` is
+  installed (`pip install -e ".[quality]"`), the perspective warp uses
+  `pyvips.Image.mapim` with the `lbb` (locally bounded bicubic) interpolator
+  instead of `PIL.Image.transform(BICUBIC)`.  `lbb` produces a smooth
+  anti-aliased alpha gradient at quad boundaries (≥ 200 unique alpha values)
+  versus PIL's binary 0/255 edge — eliminating stair-step aliasing at box
+  outlines without post-warp blur.  Falls back to PIL automatically when
+  `pyvips` is absent; no code changes required.
+- **`BOX3D_WARP_BACKEND` env var** — Selects the pyvips interpolation kernel
+  at process start: `lbb` (default) | `nohalo` (EWA, best quality for extreme
+  distortions, ~1.7× slower) | `bicubic` | `bilinear`.
+- **`quality = ["pyvips>=2.2"]`** optional dependency group in `pyproject.toml`.
+- **`--collect-all pyvips --hidden-import pyvips`** added to the PyInstaller
+  CLI build steps (Linux + Windows) in `release.yml` so the Python bindings
+  are bundled; falls back to PIL automatically when `libvips` is absent.
+- **Linear-light blending** (`engine/blending.py`) — All RGB blend operations
+  now operate in linear light (IEC 61966-2-1 sRGB transfer function) rather
+  than in gamma-encoded sRGB values.  Operating in sRGB causes Screen blend to
+  over-brighten highlights and alpha compositing to darken mid-tones at
+  partial-alpha boundaries.  A 256-entry float32 LUT (`_SRGB_TO_LINEAR`) makes
+  the sRGB→linear conversion O(1) per pixel; the linear→sRGB inverse uses a
+  vectorised `np.power` call, adding ≈ 3–5 ms per image.
+- **`linear_alpha_composite()`** (`engine/blending.py`) — Public Porter-Duff
+  'over' compositing function in linear light.  Used by the compositor's
+  cover-over-spine step (step 2) where the lbb-feathered alpha boundary causes
+  real partial-alpha blending.
+- **`TestWarpBackend`** (`tests/test_v2.py`) — 18 regression tests for the
+  pyvips/PIL warp backend: output contract, alpha smoothness (lbb ≥ 200 unique
+  values vs PIL ≤ 3), PIL fallback mocking, coordinate-cache correctness,
+  8-thread concurrency, edge cases.
+- **`TestLinearAlphaComposite`** (`tests/test_v2.py`) — 6 tests for
+  `linear_alpha_composite`: transparent dst, opaque src, transparent src,
+  output mode/size, and the canonical linear-vs-sRGB brightness test.
+- **`test_alpha_weighted_screen_uses_linear_space`** (`tests/test_v2.py`) —
+  Verifies that Screen blend of two gray-128 inputs produces a result in the
+  linear range (≈ 169) rather than the sRGB range (≈ 192), proving the blend
+  is computed in linear light.
+
+### Fixed
+
+- **Silhouette edge aliasing** (`engine/compositor.py`) — `GaussianBlur
+  (radius=1.0)` applied to the union silhouette mask before `dst_in` so the
+  hard binary alpha of template PNGs is anti-aliased; eliminates the stair-step
+  outline visible in previous releases.
+- **Over-aggressive unsharp mask** (`engine/compositor.py`) — Reduced from
+  `UnsharpMask(r=0.8, 40%, threshold=2)` to `r=0.6, 25%, threshold=3`;
+  stronger values amplified RGB contrast at the feathered warp boundary, making
+  aliasing more visible.
+- **`.gitignore` malformed entries** — `.coverage` and `coverage.json` were
+  stored as a single line with a literal `\n` (written by `echo`); now two
+  separate lines under a `# Test coverage artefacts` header.
 
 ---
 

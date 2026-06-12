@@ -48,6 +48,8 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 | **Batch circuit breaker** | Aborts after 10 consecutive errors or when errors exceed 20 % of processed files |
 | **OOM hardening** | Hard 8 192 px ceiling at two independent layers; immune to pixel-bomb inputs |
 | **Zero-disk-churn** | All intermediate images live in RAM as `PIL.Image` objects — no temp files |
+| **Linear-light blending** | Screen blend and alpha compositing operate in linear-light sRGB (IEC 61966-2-1) for physically correct colours |
+| **Accelerated warp** | Optional `pyvips` backend (`[quality]` extra) with `lbb` interpolator — smooth anti-aliased edges; falls back to PIL automatically |
 | **Pure Python core** | Pillow ≥ 10 and NumPy ≥ 1.24 only — no external binaries required |
 | **Visual profile editor** | Box3D Designer Pro: browser-based and native GUI authoring tool, Dark/Light/Retro themes |
 | **Desktop GUI** | CustomTkinter app with Control + Designer tabs — no browser required |
@@ -316,6 +318,151 @@ box3d serve
 Interactive Swagger docs: `http://127.0.0.1:8000/docs`
 
 > Full user manual: [`docs/web_manual.md`](docs/web_manual.md)
+
+---
+
+## System Diagrams
+
+### Three-tier architecture
+
+```mermaid
+graph TD
+    subgraph CLI["cli/ — Thin wiring layer"]
+        A[main.py\nargparse + command handlers]
+        B[bootstrap.py\npath resolution · first-run setup]
+        C[utils.py\nparse_rgb_str]
+    end
+
+    subgraph Core["core/ — Domain + orchestration"]
+        D[models.py\nProfile · RenderOptions · Quad · …]
+        E[registry.py\nprofile discovery · JSON validation\npath-traversal protection]
+        F[pipeline.py\nThreadPoolExecutor · circuit breaker\n⚠ only module that reads/writes disk]
+    end
+
+    subgraph Engine["engine/ — Pure rendering primitives"]
+        G[perspective.py\n8-coeff warp · lbb/PIL backends\nlru_cache homography]
+        H[blending.py\nlinear Screen blend\nPorter-Duff over · dst_in]
+        I[spine_builder.py\nsample → blur → darken → logos]
+        J[compositor.py\norchestrates G H I for one cover]
+    end
+
+    subgraph Optional["Optional components"]
+        K[web/server.py\nFastAPI · SSE · static SPA]
+        L[gui/app.py\nCustomTkinter · Control + Designer tabs]
+    end
+
+    A --> D & E & F
+    F --> J
+    J --> G & H & I
+    K --> F
+    L --> F
+
+    style CLI fill:#1e3a5f,color:#cce
+    style Core fill:#1a3a2a,color:#cec
+    style Engine fill:#3a1a2a,color:#ecc
+    style Optional fill:#2a2a1a,color:#eec
+```
+
+### Rendering pipeline — step by step
+
+```mermaid
+flowchart TD
+    INPUT([Input: cover.webp])
+    SAFE[_safe_open\ndownscale if > 8192 px\nconvert to RGBA]
+
+    subgraph SPINE["Spine generation  (engine/spine_builder.py)"]
+        S1[Sample edge strip\nleft · right · center]
+        S2[GaussianBlur\nblur_radius]
+        S3[Darken overlay\nRGBA multiply]
+        S4[Composite logos\ngame · top · bottom]
+    end
+
+    subgraph WARP["Perspective warp  (engine/perspective.py)"]
+        W1[Solve 8-coeff homography\n_solve_cached  lru_cache]
+        W2[Build inverse coord map\nnumpy mgrid  _COORD_CACHE]
+        W3{pyvips\navailable?}
+        W4[mapim lbb / nohalo\nsmooth alpha gradient]
+        W5[PIL BICUBIC\n+ GaussianBlur feather]
+    end
+
+    subgraph COMPOSITE["Compositing  (engine/compositor.py)"]
+        C1[Step 1 — Spine warp\nonto transparent canvas]
+        C2[Step 2 — Cover warp\nlinear_alpha_composite]
+        C3[Step 3 — Screen blend\ntemplate overlay  linear light]
+        C4[Step 4 — DstIn clip\nsilhouette mask + GaussianBlur 1 px]
+    end
+
+    OUTPUT([Output: rendered_box.webp])
+
+    INPUT --> SAFE
+    SAFE --> S1
+    S1 --> S2 --> S3 --> S4
+
+    SAFE --> W1
+    S4  --> W1
+    W1  --> W2 --> W3
+    W3 -- yes --> W4
+    W3 -- no  --> W5
+
+    W4 --> C1
+    W5 --> C1
+    C1 --> C2 --> C3 --> C4 --> OUTPUT
+
+    style SPINE   fill:#1e2a3a,color:#adf
+    style WARP    fill:#2a1e3a,color:#daf
+    style COMPOSITE fill:#1e3a1e,color:#afa
+```
+
+### Profile discovery flow
+
+```mermaid
+flowchart LR
+    CLI([box3d render\n--profile mvs])
+    REG[ProfileRegistry\nprofiles/]
+
+    subgraph VALID["Validation chain"]
+        V1[Name regex\n^a-zA-Z0-9_- only]
+        V2[profile.json\ntype + range checks]
+        V3[template.png\nexists · RGBA · ≤ 8192 px]
+        V4[OOM ceiling\nall dims ≤ 8192 px]
+    end
+
+    P[(profiles/mvs/\nprofile.json\ntemplate.png\nassets/)]
+    PIPE[RenderPipeline]
+
+    CLI --> REG --> V1 --> V2 --> V3 --> V4
+    P   --> REG
+    V4  --> PIPE
+
+    style VALID fill:#2a1a1a,color:#fcc
+```
+
+### Batch pipeline and circuit breaker
+
+```mermaid
+flowchart TD
+    START([run batch])
+    COVERS[scan covers_dir\n*.webp · *.png · *.jpg]
+    POOL[ThreadPoolExecutor\nworkers = 1 … N]
+    PROC[_process_one\ncompose_cover → save]
+    CB{circuit breaker}
+    OK[✓ succeeded]
+    FAIL[✗ failed]
+    SKIP[⏭ skip_existing]
+    CB_TRIP([abort batch\nbreaker tripped])
+    DONE([RenderSummary\ntotal · succeeded · failed · elapsed])
+
+    START --> COVERS --> POOL
+    POOL  --> PROC
+    PROC  --> OK & FAIL & SKIP
+    OK & FAIL & SKIP --> CB
+    CB -- consecutive ≥ 10\nor errors > 20 % of ≥ 3 --> CB_TRIP
+    CB -- ok --> POOL
+    POOL -- all done --> DONE
+
+    style CB_TRIP fill:#5a1a1a,color:#faa
+    style DONE    fill:#1a3a1a,color:#afa
+```
 
 ---
 
@@ -609,7 +756,7 @@ box3d-gui               # opens desktop app (select Designer tab)
 pytest tests/test_v2.py -v
 ```
 
-Expected: **90 tests passed**.
+Expected: **115 tests passed**.
 
 ### Web API tests
 
@@ -622,7 +769,7 @@ Expected: **30 tests passed**.
 ### Full suite
 
 ```bash
-pytest tests/ -v               # 120 tests total
+pytest tests/ -v               # 145 tests total
 ```
 
 ### Test coverage breakdown

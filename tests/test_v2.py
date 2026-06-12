@@ -25,7 +25,10 @@ sys.path.insert(0, str(ROOT))
 
 from core.models    import LogoSlot, ProfileGeometry, Quad, RenderOptions, SpineLayout
 from core.registry  import ProfileRegistry, ProfileError, _load_profile
-from engine.blending    import alpha_weighted_screen, apply_color_matrix, build_silhouette_mask, dst_in
+from engine.blending    import (
+    alpha_weighted_screen, apply_color_matrix, build_silhouette_mask,
+    dst_in, linear_alpha_composite,
+)
 from engine.perspective import resize_for_fit, solve_coefficients, warp
 from engine.spine_builder import build_spine
 
@@ -273,6 +276,100 @@ class TestBlending:
         img = Image.new("RGBA", (10,10), (200,100,100,255))
         out = apply_color_matrix(img, "2.0 0 0  0 1.0 0  0 0 1.0")
         assert out.getpixel((5,5))[0] == 255
+
+    def test_alpha_weighted_screen_uses_linear_space(self):
+        """
+        Screen blend of two identical medium-gray images in linear space must
+        produce a result that is LESS bright than the sRGB-space computation.
+
+        In sRGB space:  screen(128, 128) = 1−(1−128/255)² ≈ 192
+        In linear space: the same inputs linearise to ≈ 0.216, producing a
+        linear screen result that converts back to sRGB ≈ 169.
+
+        If this test fails (result ≥ sRGB-space value) the blend is operating
+        in sRGB rather than linear light.
+        """
+        dst = Image.new("RGBA", (10, 10), (128, 128, 128, 255))
+        src = Image.new("RGBA", (10, 10), (128, 128, 128, 255))
+        out = alpha_weighted_screen(dst, src)
+        r, _, _, _ = out.getpixel((5, 5))
+        # Screen must always lighten relative to either input
+        assert r > 128, f"Screen blend must lighten the result; got {r}"
+        # sRGB-space screen of (128, 128) ≈ 192; linear result ≈ 169
+        srgb_space_result = int(255 * (1 - (1 - 128 / 255) ** 2))  # ≈ 192
+        assert r < srgb_space_result, (
+            f"Result {r} is ≥ sRGB-space screen result {srgb_space_result}; "
+            "blend may not be operating in linear light."
+        )
+
+
+class TestLinearAlphaComposite:
+    """
+    Verifies linear_alpha_composite correctness across degenerate and
+    mixed-alpha cases.
+    """
+
+    def test_transparent_dst_returns_src(self):
+        """Compositing over a fully-transparent canvas gives the source."""
+        src = Image.new("RGBA", (10, 10), (200, 100, 50, 200))
+        dst = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+        out = linear_alpha_composite(dst, src)
+        r, g, b, a = out.getpixel((5, 5))
+        assert a == 200
+        assert abs(r - 200) <= 2 and abs(g - 100) <= 2 and abs(b - 50) <= 2
+
+    def test_opaque_src_replaces_dst(self):
+        """Fully-opaque src completely replaces dst regardless of dst content."""
+        src = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
+        dst = Image.new("RGBA", (10, 10), (0, 255, 0, 255))
+        out = linear_alpha_composite(dst, src)
+        r, g, b, a = out.getpixel((5, 5))
+        assert r == 255 and g == 0 and b == 0 and a == 255
+
+    def test_transparent_src_leaves_dst_unchanged(self):
+        """Fully-transparent src must not alter dst at all."""
+        dst = Image.new("RGBA", (10, 10), (100, 150, 200, 180))
+        src = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+        out = linear_alpha_composite(dst, src)
+        r, g, b, a = out.getpixel((5, 5))
+        assert abs(r - 100) <= 1 and abs(g - 150) <= 1 and abs(b - 200) <= 1
+        assert a == 180
+
+    def test_output_mode_is_rgba(self):
+        """Output is always RGBA."""
+        dst = Image.new("RGBA", (5, 5), (0, 0, 0, 0))
+        src = Image.new("RGBA", (5, 5), (128, 128, 128, 128))
+        assert linear_alpha_composite(dst, src).mode == "RGBA"
+
+    def test_output_size_matches_dst(self):
+        """Output size matches dst size."""
+        dst = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
+        src = Image.new("RGBA", (32, 48), (64, 128, 192, 200))
+        out = linear_alpha_composite(dst, src)
+        assert out.size == (32, 48)
+
+    def test_half_alpha_blend_is_brighter_than_srgb(self):
+        """
+        Compositing a bright half-alpha src over a dark dst in linear space
+        produces a brighter mid-tone than the sRGB-space blend would.
+
+        This is the canonical linear-blending quality test:
+          dst_lin = srgb_to_linear(30)  ≈ 0.012  (very dark)
+          src_lin = srgb_to_linear(230) ≈ 0.771  (bright)
+          blend_lin = 0.012·(1−0.5) + 0.771·0.5 ≈ 0.392
+          sRGB(0.392) ≈ 0.666 × 255 ≈ 170
+
+          sRGB blend (incorrect):
+          blend = (30/255)·0.5 + (230/255)·0.5 = 130/255 ≈ 130
+        """
+        dst = Image.new("RGBA", (10, 10), (30, 30, 30, 255))
+        src = Image.new("RGBA", (10, 10), (230, 230, 230, 128))   # half-alpha
+        out = linear_alpha_composite(dst, src)
+        r, _, _, _ = out.getpixel((5, 5))
+        srgb_blend = int(30 * 0.5 + 230 * 0.5)  # ≈ 130 (incorrect sRGB blend)
+        assert r > srgb_blend, (
+            f"Linear blend ({r}) should be brighter than sRGB blend ({srgb_blend})"
+        )
 
 
 # ===========================================================================
