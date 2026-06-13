@@ -82,6 +82,8 @@ New profiles require **zero code changes** — drop a directory in `profiles/` a
 
 9. **Logo auto-discovery:** `_auto_logo(assets_dir, stem)` in `cli/main.py`, `gui/control_tab.py`, and `web/server.py` resolves logo files by checking `.png` then `.webp` extensions. GUI and web server must use this — never hardcode `logo_paths = {"top": None, "bottom": None}`.
 
+10. **Simplicity is the preferred path.** Before implementing a solution, ask: does the platform, framework, or language already provide a canonical mechanism for this problem? If yes, use it. Custom workarounds layered on top of other workarounds are a signal that the wrong direction was chosen — stop, step back, and find the direct route. Complexity is permitted when simplicity genuinely cannot meet the requirement, not as a default.
+
 ---
 
 ## Development Workflow
