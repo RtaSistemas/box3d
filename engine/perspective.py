@@ -92,7 +92,7 @@ if _VIPS_KERNEL not in _VALID_VIPS_KERNELS:
         f"Valid values: {sorted(_VALID_VIPS_KERNELS)}"
     )
 
-# Human-readable backend label exposed to pipeline and GUI for user-visible logging.
+# Human-readable backend label for the process-default kernel (env var / diagnostics).
 if _PYVIPS_AVAILABLE:
     WARP_BACKEND_LABEL: str = (
         f"pyvips {_pyvips.__version__} — kernel={_VIPS_KERNEL} "  # type: ignore[union-attr]
@@ -100,6 +100,22 @@ if _PYVIPS_AVAILABLE:
     )
 else:
     WARP_BACKEND_LABEL = "PIL BICUBIC fallback — pyvips unavailable (expect jagged edges)"
+
+
+def get_backend_label(kernel: str) -> str:
+    """Return a per-render backend label reflecting the actual *kernel* in use.
+
+    Unlike the module-level ``WARP_BACKEND_LABEL`` constant (which always shows
+    the process-default kernel from the env var), this function is called at
+    render time so the logged label matches the kernel selected for that run.
+    """
+    if not _PYVIPS_AVAILABLE:
+        return "PIL BICUBIC fallback — pyvips unavailable (expect jagged edges)"
+    active = kernel if kernel in _VALID_VIPS_KERNELS else _VIPS_KERNEL
+    return (
+        f"pyvips {_pyvips.__version__} — kernel={active} "  # type: ignore[union-attr]
+        "(smooth anti-aliased warp)"
+    )
 
 # LRU cache of float32 coordinate arrays keyed by (canvas_w, canvas_h, coeffs-tuple).
 # Capped at _COORD_CACHE_MAX entries (~5.6 MB each for 700×1000 canvas) to bound

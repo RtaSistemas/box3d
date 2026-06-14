@@ -56,6 +56,31 @@ class TestModels:
         assert opts.workers == 4
         assert opts.no_rotate is False
 
+    def test_render_options_invalid_opacity_raises(self):
+        """template_opacity outside [0.0, 1.0] must raise ValueError."""
+        with pytest.raises(ValueError, match="template_opacity"):
+            RenderOptions(template_opacity=2.0)
+        with pytest.raises(ValueError, match="template_opacity"):
+            RenderOptions(template_opacity=-0.1)
+
+    def test_render_options_invalid_kernel_raises(self):
+        """warp_kernel not in the valid set must raise ValueError."""
+        with pytest.raises(ValueError, match="warp_kernel"):
+            RenderOptions(warp_kernel="invalid")
+        with pytest.raises(ValueError, match="warp_kernel"):
+            RenderOptions(warp_kernel="")
+
+    def test_render_options_valid_kernels_accepted(self):
+        """All valid warp_kernel values must be accepted without raising."""
+        for kernel in ("lbb", "nohalo", "bicubic", "bilinear"):
+            opts = RenderOptions(warp_kernel=kernel)
+            assert opts.warp_kernel == kernel
+
+    def test_render_options_opacity_boundary_values_accepted(self):
+        """template_opacity at exactly 0.0 and 1.0 must be accepted."""
+        assert RenderOptions(template_opacity=0.0).template_opacity == 0.0
+        assert RenderOptions(template_opacity=1.0).template_opacity == 1.0
+
     def test_spine_layout_logo_slots(self):
         layout = SpineLayout(
             game   = LogoSlot(max_w=80,  max_h=320, center_y=453, rotate=-90),
@@ -829,6 +854,75 @@ class TestCompositor:
                     "CoverResult still imported in engine.compositor — dead import"
                 )
 
+    def test_template_opacity_zero_blanks_template(self):
+        """template_opacity=0.0 must render with zero template contribution."""
+        import numpy as np
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+
+        result_zero = compose_cover(
+            cover_img=cover, profile=profile,
+            options=RenderOptions(template_opacity=0.0), template_img=template,
+        )
+        result_full = compose_cover(
+            cover_img=cover, profile=profile,
+            options=RenderOptions(template_opacity=1.0), template_img=template,
+        )
+        arr_zero = np.array(result_zero)
+        arr_full = np.array(result_full)
+        # With opacity=0 template has no effect; outputs must differ from opacity=1
+        assert not np.array_equal(arr_zero, arr_full), (
+            "template_opacity=0.0 produced the same output as template_opacity=1.0"
+        )
+
+    def test_template_opacity_half_is_between_zero_and_full(self):
+        """template_opacity=0.5 output must differ from both 0.0 and 1.0."""
+        import numpy as np
+        from engine.compositor import compose_cover
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+
+        r0 = np.array(compose_cover(cover_img=cover, profile=profile,
+                                    options=RenderOptions(template_opacity=0.0),
+                                    template_img=template))
+        r5 = np.array(compose_cover(cover_img=cover, profile=profile,
+                                    options=RenderOptions(template_opacity=0.5),
+                                    template_img=template))
+        r1 = np.array(compose_cover(cover_img=cover, profile=profile,
+                                    options=RenderOptions(template_opacity=1.0),
+                                    template_img=template))
+        assert not np.array_equal(r0, r5), "opacity=0.5 matches opacity=0.0"
+        assert not np.array_equal(r5, r1), "opacity=0.5 matches opacity=1.0"
+
+    def test_warp_kernel_propagated_through_options(self):
+        """compose_cover must pass warp_kernel from options down to the warp call."""
+        from unittest.mock import patch, call
+        from engine.compositor import compose_cover
+        import engine.compositor as ec
+        profile  = ProfileRegistry(PROFILES).load().get("mvs")
+        cover    = Image.open(ASSETS / "cover.webp").convert("RGBA")
+        template = Image.open(profile.template_path).convert("RGBA")
+
+        called_kernels: list[str | None] = []
+        original_warp = ec.warp
+
+        def recording_warp(*args, kernel=None, **kwargs):
+            called_kernels.append(kernel)
+            return original_warp(*args, kernel=kernel, **kwargs)
+
+        with patch.object(ec, "warp", side_effect=recording_warp):
+            compose_cover(
+                cover_img=cover, profile=profile,
+                options=RenderOptions(warp_kernel="nohalo"), template_img=template,
+            )
+
+        assert all(k == "nohalo" for k in called_kernels), (
+            f"Expected kernel='nohalo' in all warp calls, got: {called_kernels}"
+        )
+
 
 # ===========================================================================
 # TASK-ENGINE-IO-PURGE-01 — HIGH-2 template via _safe_open
@@ -1540,6 +1634,28 @@ class TestWarpBackend:
         assert ep._VIPS_KERNEL in ("lbb", "nohalo", "bicubic", "bilinear"), (
             f"Unexpected _VIPS_KERNEL value: {ep._VIPS_KERNEL!r}"
         )
+
+    def test_get_backend_label_reflects_kernel(self):
+        """get_backend_label() must include the requested kernel name in its output."""
+        import engine.perspective as ep
+        if not ep._PYVIPS_AVAILABLE:
+            pytest.skip("pyvips not installed")
+        for kernel in ("lbb", "nohalo", "bicubic", "bilinear"):
+            label = ep.get_backend_label(kernel)
+            assert kernel in label, (
+                f"get_backend_label({kernel!r}) did not include kernel in label: {label!r}"
+            )
+        # Fallback for invalid kernel uses module default
+        label_invalid = ep.get_backend_label("bad_kernel")
+        assert ep._VIPS_KERNEL in label_invalid
+
+    def test_get_backend_label_pil_fallback(self):
+        """get_backend_label() must return PIL fallback string when pyvips unavailable."""
+        from unittest.mock import patch
+        import engine.perspective as ep
+        with patch.object(ep, "_PYVIPS_AVAILABLE", False):
+            label = ep.get_backend_label("lbb")
+        assert "PIL" in label and "fallback" in label
 
     def test_coord_cache_evicts_oldest_entry(self):
         """_COORD_CACHE must not exceed _COORD_CACHE_MAX entries."""

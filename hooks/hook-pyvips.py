@@ -103,6 +103,13 @@ def _collect_windows() -> list[tuple[str, str]]:
         return []
 
     dlls = list(vips_bin.glob("*.dll"))
+    if not dlls:
+        warnings.warn(
+            f"hook-pyvips [Windows]: vips_bin={vips_bin} found but contains no *.dll files.\n"
+            "  Ensure the libvips installation is complete.\n"
+            "  The bundle will fall back to PIL (jagged edges)."
+        )
+        return []
     print(
         f"hook-pyvips [Windows]: bundling {len(dlls)} DLL(s) "
         f"from {vips_bin} -> bundle root"
