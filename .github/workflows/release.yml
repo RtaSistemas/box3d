@@ -103,9 +103,9 @@ jobs:
       - name: Install libvips native library (Windows)
         # libvips must be present on the build machine so that:
         #   (a) pyvips can import successfully during the build, and
-        #   (b) hook-pyvips.py can load libvips-42.dll via ctypes and
-        #       resolve its full path via GetModuleFileNameW.
-        # Adding the bin/ directory to PATH is sufficient for both.
+        #   (b) hook-pyvips.py can find libvips-42.dll via VIPS_BIN or PATH.
+        # VIPS_BIN is written to GITHUB_ENV so hook Strategy 1 activates
+        # reliably even if PATH inheritance is inconsistent in the hook env.
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
@@ -120,6 +120,7 @@ jobs:
           $binPath = $libvipsDll.Directory.FullName
           Write-Host "libvips bin dir: $binPath"
           echo $binPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "VIPS_BIN=$binPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install runtime dependencies, web + gui extras, and PyInstaller
         # pyvips (Python CFFI bindings) is installed here; the native libvips
@@ -133,13 +134,7 @@ jobs:
 
       - name: Build standalone executable (Linux)
         if: matrix.os == 'ubuntu-latest'
-        # Resolve libvips.so.42 path via ldconfig before calling PyInstaller.
-        # --add-binary places the .so at the ROOT of sys._MEIPASS, where the
-        # PyInstaller bootloader sets LD_LIBRARY_PATH so cffi.dlopen() finds it.
-        # This is explicit and does not rely on --collect-all's binary placement.
         run: |
-          LIBVIPS=$(ldconfig -p | grep 'libvips\.so\.' | awk '{print $NF}' | head -1)
-          echo "Bundling libvips: $LIBVIPS"
           pyinstaller \
             --onefile \
             --strip \
@@ -190,10 +185,7 @@ jobs:
 
       - name: Build GUI executable (Linux)
         if: matrix.os == 'ubuntu-latest'
-        # Same --add-binary strategy as the CLI build above.
         run: |
-          LIBVIPS=$(ldconfig -p | grep 'libvips\.so\.' | awk '{print $NF}' | head -1)
-          echo "Bundling libvips: $LIBVIPS"
           pyinstaller \
             --onefile \
             --strip \
@@ -205,7 +197,6 @@ jobs:
             --collect-all customtkinter \
             --collect-all PIL \
             --collect-all numpy \
-            --collect-all pyvips \
             --hidden-import tkinter \
             --hidden-import _tkinter \
             --hidden-import tkinter.filedialog \
@@ -229,8 +220,6 @@ jobs:
         # --onedir avoids the per-launch extraction to %TEMP% that causes
         # 10-20 s startup delays on Windows (Defender scans extracted files).
         # The folder is zipped in the next step for single-archive distribution.
-        # libvips-42.dll is in PATH (added by the Install libvips step) so
-        # PyInstaller's DLL tracer picks it up and copies it into the bundle.
         run: |
           pyinstaller `
             --onedir `
@@ -243,7 +232,6 @@ jobs:
             --collect-all customtkinter `
             --collect-all PIL `
             --collect-all numpy `
-            --collect-all pyvips `
             --hidden-import tkinter `
             --hidden-import _tkinter `
             --hidden-import tkinter.filedialog `
