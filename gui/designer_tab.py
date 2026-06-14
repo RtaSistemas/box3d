@@ -21,9 +21,10 @@ from PIL import Image, ImageFilter
 from .constants import (
     _BG, _PANEL, _PANEL2, _BORDER,
     _ACCENT, _ACCENT2, _ERROR, _TEXT, _DIM,
-    _FONT_MONO, _DSN_SWATCH,
+    _DSN_SWATCH,
 )
 from .designer_engine import DesignerEngine
+from .fonts import F
 
 
 class DesignerTab:
@@ -72,14 +73,14 @@ class DesignerTab:
             height=30, corner_radius=6,
             fg_color="transparent", border_color=_ACCENT, border_width=1,
             text_color=_ACCENT, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=self._load_template,
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 4))
         r += 1
 
         self._tpl_info_lbl = ctk.CTkLabel(
             left, text="No template loaded.",
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
+            font=F(9), text_color=_DIM,
         )
         self._tpl_info_lbl.grid(row=r, column=0, sticky="w", padx=14, pady=(0, 4))
         r += 1
@@ -89,7 +90,7 @@ class DesignerTab:
             height=26, corner_radius=4,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            font=F(10),
             command=self._fix_template_alpha,
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 8))
         r += 1
@@ -104,7 +105,7 @@ class DesignerTab:
                 height=28, corner_radius=4,
                 fg_color="transparent", border_color=color, border_width=1,
                 text_color=color, hover_color=_PANEL2,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                font=F(11),
                 command=lambda t=obj_type: self._add_object(t),
             ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 3))
             r += 1
@@ -114,14 +115,14 @@ class DesignerTab:
             height=28, corner_radius=4,
             fg_color="transparent", border_color=_ERROR, border_width=1,
             text_color=_ERROR, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=lambda: self._engine and self._engine.remove_selected(),
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 8))
         r += 1
 
         self._obj_list_lbl = ctk.CTkLabel(
             left, text="—",
-            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
             justify="left", anchor="w",
         )
         self._obj_list_lbl.grid(row=r, column=0, sticky="ew", padx=14, pady=(0, 10))
@@ -132,7 +133,7 @@ class DesignerTab:
 
         for lbl_text, var_name in [("Name", "_name_var"), ("Description", "_desc_var")]:
             ctk.CTkLabel(
-                left, text=lbl_text, font=ctk.CTkFont(size=10), text_color=_DIM,
+                left, text=lbl_text, font=F(10), text_color=_DIM,
             ).grid(row=r, column=0, sticky="w", padx=14)
             r += 1
             var = ctk.StringVar(value=("my_profile" if var_name == "_name_var" else ""))
@@ -140,7 +141,7 @@ class DesignerTab:
             ctk.CTkEntry(
                 left, textvariable=var,
                 fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                font=F(11),
             ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 6))
             r += 1
 
@@ -154,7 +155,7 @@ class DesignerTab:
             height=28, corner_radius=4,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=self._import_profile,
         ).grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
@@ -163,7 +164,7 @@ class DesignerTab:
             height=28, corner_radius=4,
             fg_color="transparent", border_color=_ACCENT, border_width=1,
             text_color=_ACCENT, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=self._export_profile,
         ).grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
@@ -172,7 +173,7 @@ class DesignerTab:
             height=30, corner_radius=4,
             fg_color="transparent", border_color=_ACCENT2, border_width=1,
             text_color=_ACCENT2, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=self._install_profile,
         ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 0))
 
@@ -183,7 +184,7 @@ class DesignerTab:
             ("Spine source", "_spine_src_var",  ["left", "right", "center"], "left"),
             ("Cover fit",    "_cover_fit_var",  ["stretch", "fit", "crop"],  "stretch"),
         ]:
-            ctk.CTkLabel(left, text=lbl, font=ctk.CTkFont(size=10), text_color=_DIM,
+            ctk.CTkLabel(left, text=lbl, font=F(10), text_color=_DIM,
                          ).grid(row=r, column=0, sticky="w", padx=14)
             r += 1
             var = ctk.StringVar(value=dflt)
@@ -192,20 +193,20 @@ class DesignerTab:
                 left, variable=var, values=choices, state="readonly",
                 fg_color=_BG, button_color=_BORDER, border_color=_BORDER,
                 text_color=_TEXT, dropdown_fg_color=_PANEL2,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                font=F(11),
             ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 6))
             r += 1
 
         ctk.CTkLabel(
             left, text="Spine frac (0.0–1.0)",
-            font=ctk.CTkFont(size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
         ).grid(row=r, column=0, sticky="w", padx=14)
         r += 1
         self._spine_frac_var = ctk.StringVar(value="0.20")
         ctk.CTkEntry(
             left, textvariable=self._spine_frac_var,
             fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 10))
         r += 1
 
@@ -224,7 +225,7 @@ class DesignerTab:
                 checkbox_width=16, checkbox_height=16,
                 checkmark_color=_BG, fg_color=_ACCENT,
                 hover_color=_ACCENT2, border_color=_BORDER,
-                text_color=_TEXT, font=ctk.CTkFont(size=11),
+                text_color=_TEXT, font=F(11),
                 command=cmd,
             ).grid(row=r, column=0, sticky="w", padx=14, pady=(0, 4))
             r += 1
@@ -234,13 +235,13 @@ class DesignerTab:
         gs_row.grid_columnconfigure(1, weight=1)
         r += 1
         ctk.CTkLabel(gs_row, text="Grid size:",
-                     font=ctk.CTkFont(size=10), text_color=_DIM,
+                     font=F(10), text_color=_DIM,
                      ).grid(row=0, column=0, padx=(0, 6))
         self._grid_size_var = ctk.StringVar(value="10")
         ctk.CTkEntry(
             gs_row, textvariable=self._grid_size_var, width=60,
             fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
         ).grid(row=0, column=1, sticky="w")
         self._grid_size_var.trace_add("write", self._apply_grid_size)
 
@@ -261,7 +262,7 @@ class DesignerTab:
 
         ctk.CTkLabel(
             bg_row, text="Background",
-            font=ctk.CTkFont(size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
         ).grid(row=0, column=1, sticky="w")
 
         ctk.CTkButton(
@@ -269,7 +270,7 @@ class DesignerTab:
             height=28, corner_radius=4,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            font=F(10),
             command=self._pick_canvas_bg,
         ).grid(row=0, column=2, padx=(8, 0))
 
@@ -281,7 +282,7 @@ class DesignerTab:
             height=28, corner_radius=4,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=lambda: self._engine and self._engine.fit_to_screen(),
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 4))
         r += 1
@@ -295,7 +296,7 @@ class DesignerTab:
                 zoom_row, text=lbl, height=26, corner_radius=4,
                 fg_color="transparent", border_color=_BORDER, border_width=1,
                 text_color=_DIM, hover_color=_PANEL2,
-                font=ctk.CTkFont(family=_FONT_MONO, size=10),
+                font=F(10),
                 command=lambda z=z: self._set_zoom(z),
             ).grid(row=0, column=col, padx=2, sticky="ew")
 
@@ -338,7 +339,7 @@ class DesignerTab:
         r = self._heading(right, "▸ SELECTION", r)
         self._sel_lbl = ctk.CTkLabel(
             right, text="Click an object to select it.",
-            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
             justify="left", anchor="w",
         )
         self._sel_lbl.grid(row=r, column=0, sticky="ew", padx=14, pady=(0, 8))
@@ -357,13 +358,13 @@ class DesignerTab:
             px = (12, 4) if ci == 0 else (4, 12)
             f = ctk.CTkFrame(self._props_frame, fg_color="transparent")
             f.grid(row=ri, column=ci, sticky="ew", padx=px, pady=(0, 6))
-            ctk.CTkLabel(f, text=label, font=ctk.CTkFont(size=10), text_color=_DIM).pack(anchor="w")
+            ctk.CTkLabel(f, text=label, font=F(10), text_color=_DIM).pack(anchor="w")
             var = ctk.StringVar(value="0")
             self._prop_vars[key] = var
             ctk.CTkEntry(
                 f, textvariable=var,
                 fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-                font=ctk.CTkFont(family=_FONT_MONO, size=12),
+                font=F(12),
             ).pack(fill="x")
             var.trace_add("write", lambda *_, k=key: self._on_prop_change(k))
 
@@ -376,7 +377,7 @@ class DesignerTab:
 
         ctk.CTkLabel(
             self._quad_section, text="▸ QUAD CORNERS",
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
+            font=F(9), text_color=_DIM,
         ).grid(row=0, column=0, columnspan=2, sticky="w", padx=12, pady=(10, 4))
 
         self._quad_vars: dict[str, dict[str, ctk.StringVar]] = {
@@ -388,20 +389,20 @@ class DesignerTab:
             f.grid(row=1 + row_i, column=col_i, sticky="ew", padx=px, pady=(0, 4))
             ctk.CTkLabel(
                 f, text=corner.upper(),
-                font=ctk.CTkFont(family=_FONT_MONO, size=9, weight="bold"), text_color=_DIM,
+                font=F(9, "bold"), text_color=_DIM,
             ).pack(anchor="w", padx=6, pady=(4, 0))
             xy = ctk.CTkFrame(f, fg_color="transparent")
             xy.pack(fill="x", padx=4, pady=(0, 4))
             xy.grid_columnconfigure((0, 1), weight=1)
             for ci, axis in enumerate(("x", "y")):
-                ctk.CTkLabel(xy, text=axis, font=ctk.CTkFont(size=9), text_color=_DIM,
+                ctk.CTkLabel(xy, text=axis, font=F(9), text_color=_DIM,
                              ).grid(row=0, column=ci, padx=2)
                 var = ctk.StringVar(value="0")
                 self._quad_vars[corner][axis] = var
                 ctk.CTkEntry(
                     xy, textvariable=var, width=46,
                     fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-                    font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                    font=F(11),
                 ).grid(row=1, column=ci, padx=2, sticky="ew")
                 var.trace_add("write", lambda *_, c=corner, a=axis: self._on_quad_change(c, a))
 
@@ -414,7 +415,7 @@ class DesignerTab:
 
         ctk.CTkLabel(
             self._slots_section, text="▸ SPINE LAYOUT",
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
+            font=F(9), text_color=_DIM,
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 4))
 
         self._slot_vars: dict[str, dict[str, ctk.StringVar]] = {
@@ -426,7 +427,7 @@ class DesignerTab:
         for si, slot in enumerate(("game", "top", "bottom")):
             ctk.CTkLabel(
                 self._slots_section, text=f"  {slot.upper()}",
-                font=ctk.CTkFont(family=_FONT_MONO, size=10, weight="bold"), text_color=_DIM,
+                font=F(10, "bold"), text_color=_DIM,
             ).grid(row=1 + si * 2, column=0, sticky="w", padx=14)
             inner = ctk.CTkFrame(self._slots_section, fg_color=_PANEL2, corner_radius=4)
             inner.grid(row=2 + si * 2, column=0, sticky="ew", padx=12, pady=(0, 8))
@@ -438,13 +439,13 @@ class DesignerTab:
             ]):
                 cf = ctk.CTkFrame(inner, fg_color="transparent")
                 cf.grid(row=0, column=ci, padx=4, pady=6, sticky="ew")
-                ctk.CTkLabel(cf, text=flbl, font=ctk.CTkFont(size=8), text_color=_DIM).pack(anchor="w")
+                ctk.CTkLabel(cf, text=flbl, font=F(8), text_color=_DIM).pack(anchor="w")
                 var = ctk.StringVar(value=dflt)
                 self._slot_vars[slot][fkey] = var
                 ctk.CTkEntry(
                     cf, textvariable=var,
                     fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-                    font=ctk.CTkFont(family=_FONT_MONO, size=10),
+                    font=F(10),
                 ).pack(fill="x")
 
         alpha_row = ctk.CTkFrame(self._slots_section, fg_color="transparent")
@@ -452,12 +453,12 @@ class DesignerTab:
         alpha_row.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             alpha_row, text="Logo alpha:",
-            font=ctk.CTkFont(size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
         ).grid(row=0, column=0, padx=(0, 8))
         ctk.CTkEntry(
             alpha_row, textvariable=self._logo_alpha_var, width=60,
             fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
         ).grid(row=0, column=1, sticky="w")
 
         # ── JSON preview ──────────────────────────────────────────────────────
@@ -468,7 +469,7 @@ class DesignerTab:
             height=26, corner_radius=4,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            font=F(10),
             command=self._update_json_preview,
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 6))
         r += 1
@@ -476,7 +477,7 @@ class DesignerTab:
         self._json_box = ctk.CTkTextbox(
             right, height=220,
             fg_color=_PANEL2, text_color=_DIM,
-            font=ctk.CTkFont(family=_FONT_MONO, size=9),
+            font=F(9),
             corner_radius=4, wrap="none", state="disabled",
         )
         self._json_box.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
@@ -488,7 +489,7 @@ class DesignerTab:
     def _heading(self, parent: ctk.CTkBaseClass, text: str, row: int) -> int:
         ctk.CTkLabel(
             parent, text=text,
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
+            font=F(9), text_color=_DIM,
         ).grid(row=row, column=0, sticky="w", padx=12, pady=(10, 4))
         return row + 1
 

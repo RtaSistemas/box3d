@@ -41,6 +41,13 @@ jobs:
   # ------------------------------------------------------------------
   # Build: compile standalone executables and publish the GitHub Release.
   # Runs only after the test gate passes.
+  #
+  # pyvips loads libvips at runtime via cffi.dlopen() — a dynamic load
+  # that PyInstaller cannot trace statically.  hooks/hook-pyvips.py
+  # handles this: it runs during the PyInstaller build, finds the native
+  # library on the build machine (where libvips is in PATH/ldconfig),
+  # and places it at the bundle root so cffi.dlopen() and the OS dynamic
+  # linker can find it at runtime.  No file-copying steps are needed.
   # ------------------------------------------------------------------
   build:
     name: Build for ${{ matrix.os }}
@@ -85,18 +92,20 @@ jobs:
         run: python -m pip install --upgrade pip
 
       - name: Install libvips native library (Linux)
-        # Install libvips so that pyvips is importable during the build and so
-        # that ldconfig can resolve libvips.so.42 in the "Embed" step below.
+        # libvips must be present on the build machine so that:
+        #   (a) pyvips can import successfully during the build, and
+        #   (b) hook-pyvips.py can resolve libvips.so.42 via ldconfig.
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libvips libvips-dev
 
       - name: Install libvips native library (Windows)
-        # Download the official prebuilt libvips web-variant for Windows x64.
-        # The web variant covers all formats box3d uses (webp, jpeg, png, tiff).
-        # We discover libvips-42.dll inside the extracted tree dynamically so
-        # the step is resilient to minor changes in the zip's internal structure.
+        # libvips must be present on the build machine so that:
+        #   (a) pyvips can import successfully during the build, and
+        #   (b) hook-pyvips.py can load libvips-42.dll via ctypes and
+        #       resolve its full path via GetModuleFileNameW.
+        # Adding the bin/ directory to PATH is sufficient for both.
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
@@ -105,61 +114,22 @@ jobs:
           $url = "https://github.com/libvips/build-win64-mxe/releases/download/v${version}/${archive}"
           Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
           Expand-Archive -Path $archive -DestinationPath C:\vips
-          # Discover the actual bin/ directory regardless of internal zip structure
           $libvipsDll = Get-ChildItem -Path C:\vips -Recurse -Filter "libvips-42.dll" |
                           Select-Object -First 1
           if (-not $libvipsDll) { Write-Error "libvips-42.dll not found after extraction"; exit 1 }
           $binPath = $libvipsDll.Directory.FullName
           Write-Host "libvips bin dir: $binPath"
           echo $binPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          # Store path for the Embed step (GITHUB_ENV persists across steps)
-          echo "VIPS_BIN=$binPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install runtime dependencies, web + gui extras, and PyInstaller
         # pyvips (Python CFFI bindings) is installed here; the native libvips
         # library was installed in the platform-specific step above.
         run: python -m pip install pyinstaller ".[web,gui,quality]"
 
-      - name: Embed libvips shared library into pyvips package dir (Linux)
-        # pyvips uses cffi.dlopen() at runtime — a dynamic load that PyInstaller
-        # cannot trace statically. --collect-all pyvips only bundles the Python
-        # files, never the native .so.  Copying libvips.so.42 into the pyvips
-        # package directory before PyInstaller ensures --collect-all picks it up.
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          # Use pip show to find the pyvips dir without importing the module
-          PYVIPS_DIR=$(pip show pyvips | grep '^Location:' | sed 's/Location: //')/pyvips
-          LIBVIPS=$(ldconfig -p | grep 'libvips\.so\.' | awk '{print $NF}' | head -1)
-          echo "Copying $LIBVIPS → $PYVIPS_DIR"
-          cp "$LIBVIPS" "$PYVIPS_DIR/"
-          find /usr/lib/x86_64-linux-gnu/vips-modules-* -name "*.so" \
-            -exec cp -v {} "$PYVIPS_DIR/" \; 2>/dev/null || true
-          python3 -c "import pyvips; print('pyvips', pyvips.__version__, '— libvips OK')"
-
-      - name: Embed libvips DLLs into pyvips package dir (Windows)
-        # VIPS_BIN was written to GITHUB_ENV by the Install step so the path
-        # is always consistent regardless of the zip's internal structure.
-        # pyvips dir is found via pip show (no module import — avoids a
-        # chicken-and-egg DLL load failure).  Trailing whitespace is stripped
-        # from all captured strings before use as filesystem paths.
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $vipsBin = $env:VIPS_BIN
-          Write-Host "vips bin : $vipsBin"
-          # Locate pyvips package dir via pip show (does not import the module)
-          $pipLocation = (pip show pyvips | Select-String "^Location:").ToString() `
-                           -replace "^Location:\s*", ""
-          $pyvipsDir = Join-Path $pipLocation.Trim() "pyvips"
-          Write-Host "pyvips dir: $pyvipsDir"
-          if (-not (Test-Path $pyvipsDir)) {
-            Write-Error "pyvips package dir not found: $pyvipsDir"; exit 1
-          }
-          $dlls = Get-ChildItem -Path $vipsBin -Filter "*.dll"
-          Write-Host "Copying $($dlls.Count) DLLs from $vipsBin → $pyvipsDir"
-          $dlls | Copy-Item -Destination $pyvipsDir -Force
-          # Verify pyvips can now load libvips
-          python -c "import pyvips; print('pyvips', pyvips.__version__, '-- libvips OK')"
+      - name: Verify pyvips loads on build machine
+        # Confirms libvips is in PATH/ldconfig before PyInstaller runs.
+        # If this fails the hook cannot collect the native library.
+        run: python -c "import pyvips; print('pyvips', pyvips.__version__, '— libvips OK')"
 
       - name: Build standalone executable (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -178,7 +148,7 @@ jobs:
             --add-data "cli/instructions_template.txt:cli" \
             --add-data "web/ui:web/ui" \
             --add-data "tools:tools" \
-            --add-binary "$LIBVIPS:." \
+            --additional-hooks-dir hooks \
             --hidden-import uvicorn.logging \
             --hidden-import uvicorn.loops \
             --hidden-import uvicorn.loops.auto \
@@ -190,13 +160,11 @@ jobs:
             --hidden-import uvicorn.lifespan \
             --hidden-import uvicorn.lifespan.on \
             --hidden-import fastapi \
-            --collect-all pyvips \
             --hidden-import pyvips \
             cli/main.py
 
       - name: Build standalone executable (Windows)
         if: matrix.os == 'windows-latest'
-        # Use semicolon as --add-data separator (required on Windows).
         run: |
           pyinstaller `
             --onefile `
@@ -205,6 +173,7 @@ jobs:
             --add-data "cli/instructions_template.txt;cli" `
             --add-data "web/ui;web/ui" `
             --add-data "tools;tools" `
+            --additional-hooks-dir hooks `
             --hidden-import uvicorn.logging `
             --hidden-import uvicorn.loops `
             --hidden-import uvicorn.loops.auto `
@@ -216,7 +185,6 @@ jobs:
             --hidden-import uvicorn.lifespan `
             --hidden-import uvicorn.lifespan.on `
             --hidden-import fastapi `
-            --collect-all pyvips `
             --hidden-import pyvips `
             cli/main.py
 
@@ -233,7 +201,7 @@ jobs:
             --name ${{ matrix.gui_build_name }} \
             --add-data "profiles:profiles" \
             --add-data "cli/instructions_template.txt:cli" \
-            --add-binary "$LIBVIPS:." \
+            --additional-hooks-dir hooks \
             --collect-all customtkinter \
             --collect-all PIL \
             --collect-all numpy \
@@ -271,6 +239,7 @@ jobs:
             --name ${{ matrix.gui_build_name }} `
             --add-data "profiles;profiles" `
             --add-data "cli/instructions_template.txt;cli" `
+            --additional-hooks-dir hooks `
             --collect-all customtkinter `
             --collect-all PIL `
             --collect-all numpy `
