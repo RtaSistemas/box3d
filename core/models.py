@@ -154,6 +154,9 @@ class Profile:
 # Runtime options
 # ---------------------------------------------------------------------------
 
+_VALID_WARP_KERNELS: frozenset[str] = frozenset({"lbb", "nohalo", "bicubic", "bilinear"})
+
+
 @dataclass
 class RenderOptions:
     """
@@ -166,12 +169,24 @@ class RenderOptions:
     template_opacity: float      = 1.0       # 0.0 = no lighting, 1.0 = full (default)
     cover_fit:        CoverFit | None   = None   # overrides profile default
     spine_source:     SpineSource | None = None  # overrides profile default
+    warp_kernel:      str = "lbb"                # lbb | nohalo | bicubic | bilinear
     no_rotate:        bool = False               # force rotate=0 on all slots
 
     output_format:  OutFormat = "webp"
     skip_existing:  bool      = False
     workers:        int       = 4
     dry_run:        bool      = False
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.template_opacity <= 1.0):
+            raise ValueError(
+                f"template_opacity={self.template_opacity!r} is out of bounds [0.0, 1.0]"
+            )
+        if self.warp_kernel not in _VALID_WARP_KERNELS:
+            raise ValueError(
+                f"warp_kernel={self.warp_kernel!r} is not valid. "
+                f"Valid values: {sorted(_VALID_WARP_KERNELS)}"
+            )
 
 
 @dataclass

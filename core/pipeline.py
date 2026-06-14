@@ -170,8 +170,8 @@ class RenderPipeline:
         log.info("  Output   : %s  [%s]",
                  self.output_dir, self.options.output_format)
         log.info("  Workers  : %d", self.options.workers)
-        from engine.perspective import WARP_BACKEND_LABEL
-        log.info("  Warp     : %s", WARP_BACKEND_LABEL)
+        from engine.perspective import get_backend_label
+        log.info("  Warp     : %s", get_backend_label(self.options.warp_kernel))
         log.info("=" * 62)
 
         if not self._validate():
@@ -321,6 +321,7 @@ class RenderPipeline:
                 top_logo     = top_logo_img,
                 bottom_logo  = bottom_logo_img,
                 template_img = template_img,
+                warp_kernel  = self.options.warp_kernel,
             )
 
             # --- Disk write: save final output ---

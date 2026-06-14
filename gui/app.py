@@ -252,7 +252,10 @@ def main() -> None:
     _bootstrap_data_dir()
     _bootstrap_instructions()
     cfg = load_config()
-    fonts.init_scale(cfg.get("font_scale", 1.0))
+    try:
+        fonts.init_scale(float(cfg.get("font_scale", 1.0)))
+    except (ValueError, TypeError):
+        fonts.init_scale(1.0)
     app = App()
     app.mainloop()
 

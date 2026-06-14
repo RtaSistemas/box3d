@@ -198,7 +198,12 @@ def write_pyvips_diagnostic(log_dir: Path) -> Path:
     w("=" * 70)
 
     report = "\n".join(lines)
-    out_path.write_text(report, encoding="utf-8")
+    try:
+        out_path.write_text(report, encoding="utf-8")
+    except OSError as exc:
+        import sys as _sys
+        print(f"WARNING: could not write pyvips diagnostic to {out_path}: {exc}",
+              file=_sys.stderr)
 
     if _PYVIPS_AVAILABLE:
         _log.info("pyvips diagnostic OK — report: %s", out_path)
