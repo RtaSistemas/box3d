@@ -36,8 +36,8 @@ from .config import load_config, save_config as _save_config_file  # noqa: E402
 from .constants import (                             # noqa: E402
     _BG, _PANEL, _PANEL2, _BORDER,
     _ACCENT, _ACCENT2, _WARN, _OK, _ERROR, _TEXT, _DIM,
-    _FONT_MONO,
 )
+from .fonts import F                                 # noqa: E402
 
 
 class ControlTab:
@@ -96,7 +96,7 @@ class ControlTab:
             height=44, corner_radius=6,
             fg_color="transparent", border_color=_ACCENT, border_width=1,
             text_color=_ACCENT, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=13, weight="bold"),
+            font=F(13, "bold"),
             command=self._start_render,
         )
         self._btn_render.grid(row=r, column=0, sticky="ew", padx=12, pady=(12, 8))
@@ -119,7 +119,7 @@ class ControlTab:
             state="readonly",
             fg_color=_BG, button_color=_BORDER, border_color=_BORDER,
             text_color=_TEXT, dropdown_fg_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=12),
+            font=F(12),
         )
         self._profile_combo.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
@@ -127,14 +127,14 @@ class ControlTab:
             profile_row, text="↻", width=32, height=28,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=13),
+            font=F(13),
             command=self._load_profiles,
         )
         self._btn_reload.grid(row=0, column=1)
 
         self._profile_info_lbl = ctk.CTkLabel(
             self._cfg, text="",
-            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
         )
         self._profile_info_lbl.grid(row=r, column=0, sticky="w", padx=14, pady=(0, 8))
         r += 1
@@ -169,11 +169,11 @@ class ControlTab:
         ]):
             f = ctk.CTkFrame(num_frame, fg_color="transparent")
             f.grid(row=0, column=col, sticky="ew", padx=3)
-            ctk.CTkLabel(f, text=lbl, font=ctk.CTkFont(size=10), text_color=_DIM).pack(anchor="w")
+            ctk.CTkLabel(f, text=lbl, font=F(10), text_color=_DIM).pack(anchor="w")
             ctk.CTkEntry(
                 f, textvariable=var, width=72,
                 fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-                font=ctk.CTkFont(family=_FONT_MONO, size=12),
+                font=F(12),
             ).pack(fill="x")
 
         sel_frame = ctk.CTkFrame(self._cfg, fg_color="transparent")
@@ -192,12 +192,12 @@ class ControlTab:
         ]):
             f = ctk.CTkFrame(sel_frame, fg_color="transparent")
             f.grid(row=0, column=col, sticky="ew", padx=3)
-            ctk.CTkLabel(f, text=lbl, font=ctk.CTkFont(size=10), text_color=_DIM).pack(anchor="w")
+            ctk.CTkLabel(f, text=lbl, font=F(10), text_color=_DIM).pack(anchor="w")
             ctk.CTkComboBox(
                 f, variable=var, values=vals, width=88, state="readonly",
                 fg_color=_BG, button_color=_BORDER, border_color=_BORDER,
                 text_color=_TEXT, dropdown_fg_color=_PANEL2,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                font=F(11),
             ).pack(fill="x")
 
         # ── RGB Tint ──────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ class ControlTab:
         ]):
             ctk.CTkLabel(
                 rgb_frame, text=ch, width=18,
-                font=ctk.CTkFont(family=_FONT_MONO, size=12, weight="bold"),
+                font=F(12, "bold"),
                 text_color=color,
             ).grid(row=i, column=0, padx=(10, 4), pady=4, sticky="w")
             ctk.CTkSlider(
@@ -233,7 +233,7 @@ class ControlTab:
             entry = ctk.CTkEntry(
                 rgb_frame, width=52,
                 fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
+                font=F(11),
                 justify="center",
             )
             entry.insert(0, "1.00")
@@ -256,7 +256,7 @@ class ControlTab:
 
         self._rgb_hex_lbl = ctk.CTkLabel(
             swatch_row, text="#808080", width=58,
-            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
         )
         self._rgb_hex_lbl.grid(row=0, column=1)
 
@@ -265,7 +265,7 @@ class ControlTab:
             height=26, corner_radius=4,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            font=F(10),
             command=self._reset_rgb,
         ).grid(row=r, column=0, sticky="w", padx=12, pady=(0, 10))
         r += 1
@@ -291,7 +291,7 @@ class ControlTab:
                 checkbox_width=16, checkbox_height=16,
                 checkmark_color=_BG, fg_color=_ACCENT,
                 hover_color=_ACCENT2, border_color=_BORDER,
-                text_color=_TEXT, font=ctk.CTkFont(size=12),
+                text_color=_TEXT, font=F(12),
             ).pack(anchor="w", pady=3)
 
 
@@ -307,13 +307,13 @@ class ControlTab:
 
         self._prog_meta_lbl = ctk.CTkLabel(
             meta_card, text="0 / —  ·  0%",
-            font=ctk.CTkFont(family=_FONT_MONO, size=12), text_color=_DIM,
+            font=F(12), text_color=_DIM,
         )
         self._prog_meta_lbl.grid(row=0, column=0, padx=12, pady=8, sticky="w")
 
         self._elapsed_lbl = ctk.CTkLabel(
             meta_card, text="",
-            font=ctk.CTkFont(family=_FONT_MONO, size=11), text_color=_DIM,
+            font=F(11), text_color=_DIM,
         )
         self._elapsed_lbl.grid(row=0, column=2, padx=12, pady=8, sticky="e")
 
@@ -327,7 +327,7 @@ class ControlTab:
         self._log_box = ctk.CTkTextbox(
             self._centre,
             fg_color=_PANEL2, text_color=_DIM,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             corner_radius=6, wrap="none", state="disabled",
         )
         self._log_box.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
@@ -344,7 +344,7 @@ class ControlTab:
 
         self._prev_name_lbl = ctk.CTkLabel(
             self._right, text="—",
-            font=ctk.CTkFont(family=_FONT_MONO, size=15, weight="bold"),
+            font=F(15, "bold"),
             text_color=_ACCENT,
         )
         self._prev_name_lbl.grid(row=r, column=0, sticky="w", padx=12, pady=(0, 2))
@@ -352,7 +352,7 @@ class ControlTab:
 
         self._prev_dims_lbl = ctk.CTkLabel(
             self._right, text="",
-            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
         )
         self._prev_dims_lbl.grid(row=r, column=0, sticky="w", padx=12, pady=(0, 10))
         r += 1
@@ -366,7 +366,7 @@ class ControlTab:
         self._prev_idle_lbl = ctk.CTkLabel(
             self._right,
             text="No image yet.\nStart a render to see\na preview here.",
-            font=ctk.CTkFont(size=11), text_color=_DIM, justify="center",
+            font=F(11), text_color=_DIM, justify="center",
         )
         self._prev_idle_lbl.grid(row=r, column=0, padx=12, pady=20)
         r += 1
@@ -378,7 +378,7 @@ class ControlTab:
 
         self._prev_err_lbl = ctk.CTkLabel(
             self._right, text="",
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_ERROR,
+            font=F(9), text_color=_ERROR,
         )
         self._prev_err_lbl.grid(row=r, column=0, padx=12, pady=(0, 4))
         self._prev_err_lbl.grid_remove()
@@ -386,7 +386,7 @@ class ControlTab:
 
         self._prev_stem_lbl = ctk.CTkLabel(
             self._right, text="",
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
+            font=F(9), text_color=_DIM,
         )
         self._prev_stem_lbl.grid(row=r, column=0, padx=12, pady=(0, 12))
         r += 1
@@ -396,7 +396,7 @@ class ControlTab:
             height=30, corner_radius=6,
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            font=F(10),
             command=self._open_output_folder,
         ).grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
         r += 1
@@ -406,7 +406,7 @@ class ControlTab:
 
         self._marq_summary_lbl = ctk.CTkLabel(
             self._right, text="—",
-            font=ctk.CTkFont(family=_FONT_MONO, size=10), text_color=_DIM,
+            font=F(10), text_color=_DIM,
             justify="left",
         )
         self._marq_summary_lbl.grid(row=r, column=0, sticky="w", padx=12, pady=(0, 4))
@@ -414,7 +414,7 @@ class ControlTab:
 
         self._marq_detail_box = ctk.CTkTextbox(
             self._right, height=80, fg_color=_PANEL2,
-            text_color=_DIM, font=ctk.CTkFont(family=_FONT_MONO, size=9),
+            text_color=_DIM, font=F(9),
             corner_radius=4, state="disabled",
         )
         self._marq_detail_box.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
@@ -426,7 +426,7 @@ class ControlTab:
     def _heading(self, parent: ctk.CTkBaseClass, text: str, row: int) -> int:
         ctk.CTkLabel(
             parent, text=text,
-            font=ctk.CTkFont(family=_FONT_MONO, size=9), text_color=_DIM,
+            font=F(9), text_color=_DIM,
         ).grid(row=row, column=0, sticky="w", padx=12, pady=(10, 4))
         return row + 1
 
@@ -434,7 +434,7 @@ class ControlTab:
         self, parent: ctk.CTkBaseClass, label: str, var: ctk.StringVar, row: int
     ) -> int:
         ctk.CTkLabel(
-            parent, text=label, font=ctk.CTkFont(size=10), text_color=_DIM,
+            parent, text=label, font=F(10), text_color=_DIM,
         ).grid(row=row, column=0, sticky="w", padx=14, pady=(0, 2))
         row += 1
 
@@ -446,14 +446,14 @@ class ControlTab:
         ctk.CTkEntry(
             frame, textvariable=var,
             fg_color=_BG, border_color=_BORDER, text_color=_TEXT,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
         ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
         ctk.CTkButton(
             frame, text="📂", width=32, height=28,
             fg_color=_PANEL2, hover_color=_PANEL,
             border_color=_BORDER, border_width=1,
-            text_color=_TEXT, font=ctk.CTkFont(size=13),
+            text_color=_TEXT, font=F(13),
             command=lambda v=var: self._browse_dir(v),
         ).grid(row=0, column=1)
 
@@ -1052,7 +1052,7 @@ class ControlTab:
         ctk.CTkLabel(
             dlg,
             text="✔  Render Complete" if ok else "✘  Finished With Errors",
-            font=ctk.CTkFont(family=_FONT_MONO, size=14, weight="bold"),
+            font=F(14, "bold"),
             text_color=_OK if ok else _ERROR,
         ).pack(pady=(20, 10))
 
@@ -1069,22 +1069,22 @@ class ControlTab:
         ]):
             cell = ctk.CTkFrame(stats, fg_color="transparent")
             cell.grid(row=0, column=col, padx=6, pady=10, sticky="ew")
-            ctk.CTkLabel(cell, text=label, font=ctk.CTkFont(size=9), text_color=_DIM).pack()
+            ctk.CTkLabel(cell, text=label, font=F(9), text_color=_DIM).pack()
             ctk.CTkLabel(
                 cell, text=str(value),
-                font=ctk.CTkFont(family=_FONT_MONO, size=22, weight="bold"),
+                font=F(22, "bold"),
                 text_color=color,
             ).pack()
 
         ctk.CTkLabel(
             dlg, text=f"Elapsed: {data['elapsed_time']}s",
-            font=ctk.CTkFont(family=_FONT_MONO, size=11), text_color=_WARN,
+            font=F(11), text_color=_WARN,
         ).pack(pady=(0, 8))
 
         if data.get("errors"):
             err_box = ctk.CTkTextbox(
                 dlg, height=70, fg_color=_BG,
-                text_color=_ERROR, font=ctk.CTkFont(family=_FONT_MONO, size=10),
+                text_color=_ERROR, font=F(10),
             )
             err_box.pack(fill="x", padx=20, pady=(0, 10))
             for e in data["errors"]:
@@ -1099,13 +1099,13 @@ class ControlTab:
             btn_row, text="📂  Open Output",
             fg_color="transparent", border_color=_BORDER, border_width=1,
             text_color=_DIM, hover_color=_PANEL2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             command=self._open_output_folder,
         ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
         ctk.CTkButton(
             btn_row, text="Close",
             fg_color=_ACCENT, text_color=_BG, hover_color=_ACCENT2,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11, weight="bold"),
+            font=F(11, "bold"),
             command=dlg.destroy,
         ).grid(row=0, column=1, sticky="ew", padx=(4, 0))

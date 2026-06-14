@@ -1,7 +1,8 @@
 """
 gui/app.py — Box3D Desktop GUI entry point
 ===========================================
-Thin shell: window chrome, header (with inline tab nav), and two content frames.
+Thin shell: window chrome, header (with inline tab nav + font scale controls),
+and two content frames.
 
     Control  → gui/control_tab.py  (ControlTab)
     Designer → gui/designer_tab.py (DesignerTab)
@@ -29,9 +30,12 @@ if str(_ROOT) not in sys.path:
 from cli.bootstrap import (                                 # noqa: E402
     _bootstrap_data_dir, _bootstrap_instructions,
 )
+from gui.config import load_config, save_config             # noqa: E402
 from gui.constants import (                                 # noqa: E402
-    _VERSION, _BG, _PANEL, _PANEL2, _ACCENT, _ACCENT2, _OK, _DIM, _FONT_MONO,
+    _VERSION, _BG, _PANEL, _PANEL2, _ACCENT, _ACCENT2, _OK, _DIM,
 )
+from gui import fonts                                       # noqa: E402
+from gui.fonts import F                                     # noqa: E402
 from gui.control_tab  import ControlTab                     # noqa: E402
 from gui.designer_tab import DesignerTab                    # noqa: E402
 
@@ -59,7 +63,7 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # =========================================================================
-    # Header — BOX3D title + version + inline tab nav + status
+    # Header — BOX3D title + version + inline tab nav + font scale + status
     # =========================================================================
 
     def _build_header(self) -> None:
@@ -67,36 +71,41 @@ class App(ctk.CTk):
         hdr.grid(row=0, column=0, sticky="ew")
         hdr.grid_propagate(False)
         hdr.grid_rowconfigure(0, weight=1)
-        # col 5 expands to push status to the right
+        # col 5 expands to push right-side controls to the edge
         hdr.grid_columnconfigure(5, weight=1)
 
         # ── Logo ──────────────────────────────────────────────────────────────
         ctk.CTkLabel(
             hdr, text="BOX",
-            font=ctk.CTkFont(family=_FONT_MONO, size=20, weight="bold"),
+            font=F(20, "bold"),
             text_color=_ACCENT,
         ).grid(row=0, column=0, padx=(16, 0))
 
         ctk.CTkLabel(
             hdr, text="3D",
-            font=ctk.CTkFont(family=_FONT_MONO, size=20, weight="bold"),
+            font=F(20, "bold"),
             text_color=_ACCENT2,
         ).grid(row=0, column=1, padx=(0, 8))
 
         ctk.CTkLabel(
             hdr, text=f"v{_VERSION}",
-            font=ctk.CTkFont(family=_FONT_MONO, size=10),
+            font=F(10),
             text_color=_DIM,
         ).grid(row=0, column=2, padx=(0, 20))
 
-        # ── Tab nav buttons (direct children, same grid row) ──────────────────
+        # ── Tab nav buttons ───────────────────────────────────────────────────
+        # Store the two font objects so _switch_tab can reuse them without
+        # creating new CTkFont instances on every tab switch (avoids registry growth).
+        self._font_nav_active = F(11, "bold")
+        self._font_nav_dim    = F(11)
+
         self._btn_ctrl = ctk.CTkButton(
             hdr, text="CONTROL",
             width=96, height=52, corner_radius=0,
             fg_color="transparent", hover_color=_PANEL2,
             border_width=0,
             text_color=_ACCENT,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11, weight="bold"),
+            font=self._font_nav_active,
             command=lambda: self._switch_tab("Control"),
         )
         self._btn_ctrl.grid(row=0, column=3)
@@ -107,21 +116,51 @@ class App(ctk.CTk):
             fg_color="transparent", hover_color=_PANEL2,
             border_width=0,
             text_color=_DIM,
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=self._font_nav_dim,
             command=lambda: self._switch_tab("Designer"),
         )
         self._btn_dsgn.grid(row=0, column=4)
 
-        # col 5 spacer pushes status to right
+        # col 5 spacer
         ctk.CTkFrame(hdr, fg_color="transparent", width=0).grid(row=0, column=5, sticky="ew")
+
+        # ── Font scale controls ───────────────────────────────────────────────
+        self._scale_label = ctk.CTkLabel(
+            hdr, text=f"{fonts.scale_pct()}%",
+            font=F(10),
+            text_color=_DIM,
+            width=36,
+        )
+
+        ctk.CTkButton(
+            hdr, text="A-",
+            width=28, height=28, corner_radius=4,
+            fg_color="transparent", hover_color=_PANEL2,
+            border_width=1, border_color=_DIM,
+            text_color=_DIM,
+            font=F(10),
+            command=self._font_decrease,
+        ).grid(row=0, column=6, padx=(0, 2))
+
+        self._scale_label.grid(row=0, column=7, padx=2)
+
+        ctk.CTkButton(
+            hdr, text="A+",
+            width=28, height=28, corner_radius=4,
+            fg_color="transparent", hover_color=_PANEL2,
+            border_width=1, border_color=_DIM,
+            text_color=_DIM,
+            font=F(11),
+            command=self._font_increase,
+        ).grid(row=0, column=8, padx=(2, 12))
 
         # ── Status label ──────────────────────────────────────────────────────
         self._status_label = ctk.CTkLabel(
             hdr, text="● READY",
-            font=ctk.CTkFont(family=_FONT_MONO, size=11),
+            font=F(11),
             text_color=_OK,
         )
-        self._status_label.grid(row=0, column=6, padx=16)
+        self._status_label.grid(row=0, column=9, padx=16)
 
     # =========================================================================
     # Content area — two frames, one visible at a time
@@ -158,25 +197,34 @@ class App(ctk.CTk):
         if name == "Control":
             self._ctrl_frame.grid()
             self._dsgn_frame.grid_remove()
-            self._btn_ctrl.configure(
-                text_color=_ACCENT,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11, weight="bold"),
-            )
-            self._btn_dsgn.configure(
-                text_color=_DIM,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
-            )
+            self._btn_ctrl.configure(text_color=_ACCENT, font=self._font_nav_active)
+            self._btn_dsgn.configure(text_color=_DIM,    font=self._font_nav_dim)
         else:
             self._dsgn_frame.grid()
             self._ctrl_frame.grid_remove()
-            self._btn_dsgn.configure(
-                text_color=_ACCENT,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11, weight="bold"),
-            )
-            self._btn_ctrl.configure(
-                text_color=_DIM,
-                font=ctk.CTkFont(family=_FONT_MONO, size=11),
-            )
+            self._btn_dsgn.configure(text_color=_ACCENT, font=self._font_nav_active)
+            self._btn_ctrl.configure(text_color=_DIM,    font=self._font_nav_dim)
+
+    # =========================================================================
+    # Font scale
+    # =========================================================================
+
+    def _font_increase(self) -> None:
+        new = fonts.step_up()
+        fonts.set_scale(new)
+        self._scale_label.configure(text=f"{fonts.scale_pct()}%")
+        self._persist_scale()
+
+    def _font_decrease(self) -> None:
+        new = fonts.step_down()
+        fonts.set_scale(new)
+        self._scale_label.configure(text=f"{fonts.scale_pct()}%")
+        self._persist_scale()
+
+    def _persist_scale(self) -> None:
+        cfg = load_config()
+        cfg["font_scale"] = fonts.get_scale()
+        save_config(cfg)
 
     # =========================================================================
     # Callbacks
@@ -203,6 +251,8 @@ class App(ctk.CTk):
 def main() -> None:
     _bootstrap_data_dir()
     _bootstrap_instructions()
+    cfg = load_config()
+    fonts.init_scale(cfg.get("font_scale", 1.0))
     app = App()
     app.mainloop()
 
