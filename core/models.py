@@ -166,6 +166,7 @@ class RenderOptions:
     template_opacity: float      = 1.0       # 0.0 = no lighting, 1.0 = full (default)
     cover_fit:        CoverFit | None   = None   # overrides profile default
     spine_source:     SpineSource | None = None  # overrides profile default
+    warp_kernel:      str = "lbb"                # lbb | nohalo | bicubic | bilinear
     no_rotate:        bool = False               # force rotate=0 on all slots
 
     output_format:  OutFormat = "webp"

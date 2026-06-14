@@ -90,6 +90,9 @@ Examples:
                           help="Spine background source edge")
     render_p.add_argument("--cover-fit", "-c", choices=["stretch", "fit", "crop"],
                           help="Cover fit mode")
+    render_p.add_argument("--warp-kernel", choices=["lbb", "nohalo", "bicubic", "bilinear"],
+                          default="lbb",
+                          help="pyvips warp interpolator (default: lbb; nohalo = max quality, ~1.7x slower)")
     render_p.add_argument("--template-opacity", type=float, default=1.0,
                           help="Template lighting opacity 0.0–1.0 (default: 1.0; lower = attenuated)")
     render_p.add_argument("--no-rotate", "-r", action="store_true",
@@ -238,6 +241,7 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         template_opacity = args.template_opacity,
         cover_fit        = args.cover_fit,
         spine_source     = args.spine_source,
+        warp_kernel      = args.warp_kernel,
         no_rotate        = args.no_rotate,
         output_format    = args.output_format,
         skip_existing    = args.skip_existing,

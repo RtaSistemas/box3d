@@ -212,9 +212,10 @@ def _warp_pyvips(
     canvas_h: int,
     coeffs:   tuple[float, ...],
     feather:  float = 0,
+    kernel:   str | None = None,
 ) -> Image.Image:
     """
-    pyvips-accelerated perspective warp using the ``_VIPS_KERNEL`` interpolator.
+    pyvips-accelerated perspective warp.
 
     Uses ``mapim`` with ``extend=BACKGROUND`` so out-of-bounds reads return
     transparent pixels.  ``lbb`` (the default kernel) produces a smooth
@@ -223,7 +224,11 @@ def _warp_pyvips(
     The coordinate array is fetched from ``_COORD_CACHE`` and wrapped
     zero-copy into a pyvips Image.  The source image is also wrapped
     zero-copy (the PIL image buffer stays alive for the call duration).
+
+    *kernel* overrides the module-level ``_VIPS_KERNEL`` for this call only.
     """
+    active_kernel = kernel if kernel in _VALID_VIPS_KERNELS else _VIPS_KERNEL
+
     # Ensure source is RGBA before wrapping (pyvips mapim must return 4 bands)
     src_rgba = src if src.mode == "RGBA" else src.convert("RGBA")
     src_arr  = np.asarray(src_rgba)  # view, no copy; PIL buffer stays alive
@@ -237,7 +242,7 @@ def _warp_pyvips(
 
     warped_vips = src_vips.mapim(
         idx_vips,
-        interpolate=_pyvips.Interpolate.new(_VIPS_KERNEL),
+        interpolate=_pyvips.Interpolate.new(active_kernel),
         background=[0, 0, 0, 0],
         extend=_pyvips.Extend.BACKGROUND,
     )
@@ -263,33 +268,36 @@ def warp(
     canvas_h: int,
     dst_pts:  list[tuple[int, int]],
     feather:  float = 1.2,
+    kernel:   str | None = None,
 ) -> Image.Image:
     """
     Perspective-warp *src* onto a transparent canvas of size
     (*canvas_w* x *canvas_h*), placing its four corners at *dst_pts*
     (TL, TR, BR, BL order).
 
-    When pyvips is available the warp is performed via ``mapim``
-    (``_VIPS_KERNEL`` interpolator, default ``lbb``), which is ~2.3x
-    faster than PIL on cache-hit batches and produces a smooth anti-aliased
-    alpha gradient at quad boundaries (256 unique values vs PIL's binary
-    0/255 before feathering).
+    When pyvips is available the warp is performed via ``mapim``, which is
+    ~2.3x faster than PIL on cache-hit batches and produces a smooth
+    anti-aliased alpha gradient at quad boundaries.
 
     Falls back to ``PIL.Image.transform(PERSPECTIVE, BICUBIC)`` when pyvips
     is absent.
 
-    *feather* controls the GaussianBlur radius applied to the alpha channel
-    in the **PIL fallback path** to soften the hard binary 0/255 edge that
-    PIL BICUBIC produces at quad boundaries.  The pyvips path with ``lbb``
-    produces a smooth gradient intrinsically and ignores *feather*.
-    Set to 0 to disable feathering on the PIL path.
+    *kernel* selects the pyvips interpolator for this call:
+      ``lbb`` (default) — smooth anti-aliased, fast
+      ``nohalo`` — EWA, highest quality for extreme distortions (~1.7x slower)
+      ``bicubic`` | ``bilinear`` — standard alternatives
+    If *kernel* is None or invalid the module default (``_VIPS_KERNEL``) is used.
+
+    *feather* controls the GaussianBlur radius on the alpha channel in the
+    PIL fallback path only; pyvips ``lbb``/``nohalo`` produce smooth gradients
+    intrinsically.
     """
     sw, sh  = src.size
     src_pts = [(0, 0), (sw, 0), (sw, sh), (0, sh)]
     coeffs  = solve_coefficients(src_pts, dst_pts)
 
     if _PYVIPS_AVAILABLE:
-        return _warp_pyvips(src, canvas_w, canvas_h, coeffs, feather)
+        return _warp_pyvips(src, canvas_w, canvas_h, coeffs, feather, kernel)
 
     # PIL fallback
     src_rgba = src if src.mode == "RGBA" else src.convert("RGBA")

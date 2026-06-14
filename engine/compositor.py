@@ -34,6 +34,7 @@ def compose_cover(
     top_logo:     Image.Image | None = None,
     bottom_logo:  Image.Image | None = None,
     template_img: Image.Image | None = None,
+    warp_kernel:  str | None = None,
 ) -> Image.Image:
     """
     Compose a complete 3-D box from pre-loaded images.
@@ -72,6 +73,7 @@ def compose_cover(
         rgb_matrix        = options.rgb_matrix,
         template_opacity  = options.template_opacity,
         template_img      = template_img,
+        warp_kernel       = warp_kernel or options.warp_kernel,
     )
 
 
@@ -86,8 +88,9 @@ def _composite(
     rgb_matrix:       str | None,
     template_img:     Image.Image,
     template_opacity: float = 1.0,
+    warp_kernel:      str = "lbb",
 ) -> Image.Image:
-    """Five-step compositing pipeline (spine → cover → screen → dstin → return)."""
+    """Five-step compositing pipeline (spine -> cover -> screen -> dstin -> return)."""
     assert template_img is not None, (
         "template_img is required — engine/ must not perform disk I/O. "
         "Pre-load the template in the pipeline layer."
@@ -112,18 +115,18 @@ def _composite(
     # canvas is fully transparent → PIL alpha_composite is equivalent to
     # linear_alpha_composite here (no actual blending occurs), and faster.
     spine_src    = resize_for_fit(spine_img, geom.spine_w, geom.spine_h, "stretch")
-    spine_warped = warp(spine_src, tw, th, geom.spine_quad.as_list())
+    spine_warped = warp(spine_src, tw, th, geom.spine_quad.as_list(), kernel=warp_kernel)
     canvas       = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     canvas       = Image.alpha_composite(canvas, spine_warped)
 
-    # Step 2 — Cover warp + mild unsharp mask (RGB only) to recover sharpness
-    #           lost during perspective resampling; alpha is left untouched so
-    #           the feathered edge from warp() is preserved.
+    # Step 2 — Cover warp + unsharp mask (RGB only) to recover sharpness lost
+    #           during perspective resampling; alpha is left untouched so the
+    #           feathered edge from warp() is preserved.
     # linear_alpha_composite is used here because the cover has a feathered
     # alpha boundary (~2 px from lbb warp) where real blending over the spine
     # occurs; linear blending prevents darkening at those boundary pixels.
     cover_src    = resize_for_fit(cover_img, geom.cover_w, geom.cover_h, geom.cover_fit)
-    cover_warped = warp(cover_src, tw, th, geom.cover_quad.as_list())
+    cover_warped = warp(cover_src, tw, th, geom.cover_quad.as_list(), kernel=warp_kernel)
     cover_warped = _sharpen_rgb(cover_warped)
     canvas       = linear_alpha_composite(canvas, cover_warped)
 
@@ -154,7 +157,7 @@ def _sharpen_rgb(img: Image.Image) -> Image.Image:
     """
     r, g, b, a = img.split()
     rgb = Image.merge("RGB", (r, g, b)).filter(
-        ImageFilter.UnsharpMask(radius=0.6, percent=25, threshold=3)
+        ImageFilter.UnsharpMask(radius=1.0, percent=80, threshold=3)
     )
     return Image.merge("RGBA", (*rgb.split(), a))
 

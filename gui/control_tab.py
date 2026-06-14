@@ -180,17 +180,19 @@ class ControlTab:
 
         sel_frame = ctk.CTkFrame(self._cfg, fg_color="transparent")
         sel_frame.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 8))
-        sel_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        sel_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
         r += 1
 
         self._cover_fit_var    = ctk.StringVar(value="stretch")
         self._spine_source_var = ctk.StringVar(value="auto")
         self._format_var       = ctk.StringVar(value="webp")
+        self._warp_kernel_var  = ctk.StringVar(value="lbb")
 
         for col, (lbl, var, vals) in enumerate([
             ("Cover fit",    self._cover_fit_var,    ["stretch", "fit", "crop"]),
             ("Spine source", self._spine_source_var, ["auto", "left", "right", "center"]),
             ("Format",       self._format_var,       ["webp", "png"]),
+            ("Warp kernel",  self._warp_kernel_var,  ["lbb", "nohalo", "bicubic", "bilinear"]),
         ]):
             f = ctk.CTkFrame(sel_frame, fg_color="transparent")
             f.grid(row=0, column=col, sticky="ew", padx=3)
@@ -703,6 +705,7 @@ class ControlTab:
             template_opacity = template_opacity,
             cover_fit        = self._cover_fit_var.get() or None,         # type: ignore[assignment]
             spine_source     = spine_src,
+            warp_kernel      = self._warp_kernel_var.get() or "lbb",
             output_format    = self._format_var.get(),                    # type: ignore[assignment]
             skip_existing    = self._skip_var.get(),
             workers          = workers,
@@ -999,6 +1002,7 @@ class ControlTab:
             ("cover_fit",         self._cover_fit_var),
             ("spine_source",      self._spine_source_var),
             ("output_format",     self._format_var),
+            ("warp_kernel",       self._warp_kernel_var),
         ]:
             if (v := cfg.get(key)) is not None:
                 var.set(str(v))
@@ -1038,6 +1042,7 @@ class ControlTab:
             "cover_fit":     self._cover_fit_var.get(),
             "spine_source":  self._spine_source_var.get(),
             "output_format": self._format_var.get(),
+            "warp_kernel":   self._warp_kernel_var.get(),
             "rgb_r":         self._rgb_r.get(),
             "rgb_g":         self._rgb_g.get(),
             "rgb_b":         self._rgb_b.get(),

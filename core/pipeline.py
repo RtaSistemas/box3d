@@ -326,7 +326,7 @@ class RenderPipeline:
             # --- Disk write: save final output ---
             ext = output_path.suffix.lower()
             if ext == ".webp":
-                result_img.save(str(output_path), "WEBP", quality=92, method=4)
+                result_img.save(str(output_path), "WEBP", quality=95, method=4)
             else:
                 result_img.save(str(output_path), "PNG", optimize=False)
 

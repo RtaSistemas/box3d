@@ -101,6 +101,9 @@ class RenderRequest(BaseModel):
     no_logos:         bool  = Field(False)
     template_opacity: float = Field(1.0, ge=0.0, le=1.0,
                                     description="Template lighting opacity (0.0=none, 1.0=full)")
+    warp_kernel: Literal["lbb", "nohalo", "bicubic", "bilinear"] = Field(
+        "lbb", description="pyvips interpolator (lbb=default; nohalo=max quality, ~1.7x slower)"
+    )
     rgb_matrix:   Annotated[
         list[Annotated[float, Field(ge=0.0, le=5.0)]], Field(min_length=3, max_length=3)
     ] | None = Field(None, description="[r, g, b] channel scale factors (0.0–5.0)")
@@ -261,6 +264,7 @@ async def start_render(
         template_opacity = payload.template_opacity,
         cover_fit        = payload.cover_fit,
         spine_source     = payload.spine_source,  # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
+        warp_kernel      = payload.warp_kernel,
         output_format    = payload.output_format,
         skip_existing    = payload.skip_existing,
         workers          = payload.workers,
