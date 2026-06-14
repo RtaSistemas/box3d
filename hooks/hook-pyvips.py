@@ -9,7 +9,7 @@ This hook runs on the BUILD machine where libvips is already installed
 
   1. Calls collect_all('pyvips') to bundle all pyvips Python files.
   2. Locates the native library using three independent strategies
-     (env var → PATH search → ctypes) so hook execution is robust even
+     (env var -> PATH search -> ctypes) so hook execution is robust even
      when the hook's Python environment differs from the build shell.
   3. Adds all co-located native DLLs/SOs to the bundle ROOT ('.'),
      which is sys._MEIPASS at runtime — where cffi.dlopen() and the
@@ -65,7 +65,7 @@ def _collect_windows() -> list[tuple[str, str]]:
         candidate = Path(env_bin)
         if candidate.is_dir() and (candidate / "libvips-42.dll").exists():
             vips_bin = candidate
-            print(f"hook-pyvips [Win/S1]: vips bin via VIPS_BIN → {vips_bin}")
+            print(f"hook-pyvips [Win/S1]: vips bin via VIPS_BIN -> {vips_bin}")
 
     # Strategy 2: Walk PATH looking for libvips-42.dll
     if vips_bin is None:
@@ -75,7 +75,7 @@ def _collect_windows() -> list[tuple[str, str]]:
             dll_candidate = Path(dir_str) / "libvips-42.dll"
             if dll_candidate.exists():
                 vips_bin = dll_candidate.parent
-                print(f"hook-pyvips [Win/S2]: vips bin via PATH → {vips_bin}")
+                print(f"hook-pyvips [Win/S2]: vips bin via PATH -> {vips_bin}")
                 break
 
     # Strategy 3: ctypes.CDLL + GetModuleFileNameW
@@ -89,7 +89,7 @@ def _collect_windows() -> list[tuple[str, str]]:
             resolved = Path(buf.value)
             if resolved.exists():
                 vips_bin = resolved.parent
-                print(f"hook-pyvips [Win/S3]: vips bin via ctypes → {vips_bin}")
+                print(f"hook-pyvips [Win/S3]: vips bin via ctypes -> {vips_bin}")
         except Exception as exc:
             warnings.warn(f"hook-pyvips: ctypes strategy failed: {exc}")
 
@@ -105,7 +105,7 @@ def _collect_windows() -> list[tuple[str, str]]:
     dlls = list(vips_bin.glob("*.dll"))
     print(
         f"hook-pyvips [Windows]: bundling {len(dlls)} DLL(s) "
-        f"from {vips_bin} → bundle root"
+        f"from {vips_bin} -> bundle root"
     )
     return [(str(dll), ".") for dll in dlls]
 
@@ -126,7 +126,7 @@ def _collect_linux() -> list[tuple[str, str]]:
         if "libvips.so." in line and "=>" in line:
             so_path = Path(line.split("=>")[-1].strip())
             if so_path.exists():
-                print(f"hook-pyvips [Linux]: bundling {so_path.name} → bundle root")
+                print(f"hook-pyvips [Linux]: bundling {so_path.name} -> bundle root")
                 result.append((str(so_path), "."))
                 break
     else:
