@@ -155,17 +155,19 @@ class ControlTab:
 
         num_frame = ctk.CTkFrame(self._cfg, fg_color="transparent")
         num_frame.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 8))
-        num_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        num_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
         r += 1
 
-        self._workers_var = ctk.StringVar(value="4")
-        self._blur_var    = ctk.StringVar(value="20")
-        self._darken_var  = ctk.StringVar(value="180")
+        self._workers_var          = ctk.StringVar(value="4")
+        self._blur_var             = ctk.StringVar(value="20")
+        self._darken_var           = ctk.StringVar(value="180")
+        self._template_opacity_var = ctk.StringVar(value="100")
 
         for col, (lbl, var) in enumerate([
-            ("Workers", self._workers_var),
-            ("Blur",    self._blur_var),
-            ("Darken",  self._darken_var),
+            ("Workers",  self._workers_var),
+            ("Blur",     self._blur_var),
+            ("Darken",   self._darken_var),
+            ("Opacity%", self._template_opacity_var),
         ]):
             f = ctk.CTkFrame(num_frame, fg_color="transparent")
             f.grid(row=0, column=col, sticky="ew", padx=3)
@@ -682,19 +684,29 @@ class ControlTab:
             messagebox.showerror("Error", "Darken alpha must be an integer between 0 and 255.")
             return
 
+        try:
+            opacity_pct = int(self._template_opacity_var.get() or 100)
+            if not (0 <= opacity_pct <= 100):
+                raise ValueError
+            template_opacity = opacity_pct / 100.0
+        except ValueError:
+            messagebox.showerror("Error", "Opacity must be an integer between 0 and 100.")
+            return
+
         spine_raw = self._spine_source_var.get()
         spine_src = None if spine_raw in ("", "auto") else spine_raw   # type: ignore[assignment]
 
         options = RenderOptions(
-            blur_radius   = blur,
-            darken_alpha  = darken,
-            rgb_matrix    = self._get_rgb_matrix(),
-            cover_fit     = self._cover_fit_var.get() or None,           # type: ignore[assignment]
-            spine_source  = spine_src,
-            output_format = self._format_var.get(),                       # type: ignore[assignment]
-            skip_existing = self._skip_var.get(),
-            workers       = workers,
-            dry_run       = self._dry_var.get(),
+            blur_radius      = blur,
+            darken_alpha     = darken,
+            rgb_matrix       = self._get_rgb_matrix(),
+            template_opacity = template_opacity,
+            cover_fit        = self._cover_fit_var.get() or None,         # type: ignore[assignment]
+            spine_source     = spine_src,
+            output_format    = self._format_var.get(),                    # type: ignore[assignment]
+            skip_existing    = self._skip_var.get(),
+            workers          = workers,
+            dry_run          = self._dry_var.get(),
         )
 
         marquees_raw = self._marquees_var.get().strip()
@@ -977,15 +989,16 @@ class ControlTab:
             self._on_profile_change(last)
 
         for key, var in [
-            ("covers_dir",   self._covers_var),
-            ("output_dir",   self._output_var),
-            ("marquees_dir", self._marquees_var),
-            ("workers",      self._workers_var),
-            ("blur",         self._blur_var),
-            ("darken",       self._darken_var),
-            ("cover_fit",    self._cover_fit_var),
-            ("spine_source", self._spine_source_var),
-            ("output_format", self._format_var),
+            ("covers_dir",        self._covers_var),
+            ("output_dir",        self._output_var),
+            ("marquees_dir",      self._marquees_var),
+            ("workers",           self._workers_var),
+            ("blur",              self._blur_var),
+            ("darken",            self._darken_var),
+            ("template_opacity",  self._template_opacity_var),
+            ("cover_fit",         self._cover_fit_var),
+            ("spine_source",      self._spine_source_var),
+            ("output_format",     self._format_var),
         ]:
             if (v := cfg.get(key)) is not None:
                 var.set(str(v))
@@ -1019,8 +1032,9 @@ class ControlTab:
             "output_dir":    self._output_var.get(),
             "marquees_dir":  self._marquees_var.get(),
             "workers":       self._workers_var.get(),
-            "blur":          self._blur_var.get(),
-            "darken":        self._darken_var.get(),
+            "blur":              self._blur_var.get(),
+            "darken":            self._darken_var.get(),
+            "template_opacity":  self._template_opacity_var.get(),
             "cover_fit":     self._cover_fit_var.get(),
             "spine_source":  self._spine_source_var.get(),
             "output_format": self._format_var.get(),

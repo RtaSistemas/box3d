@@ -90,6 +90,8 @@ Examples:
                           help="Spine background source edge")
     render_p.add_argument("--cover-fit", "-c", choices=["stretch", "fit", "crop"],
                           help="Cover fit mode")
+    render_p.add_argument("--template-opacity", type=float, default=1.0,
+                          help="Template lighting opacity 0.0–1.0 (default: 1.0; lower = attenuated)")
     render_p.add_argument("--no-rotate", "-r", action="store_true",
                           help="Force all logo rotations to 0 degrees")
     render_p.add_argument("--no-logos", "-l", action="store_true",
@@ -204,6 +206,10 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         log.error("--blur-radius %d is out of bounds (0-100).", args.blur_radius)
         return 1
 
+    if not (0.0 <= args.template_opacity <= 1.0):
+        log.error("--template-opacity %.2f is out of bounds (0.0-1.0).", args.template_opacity)
+        return 1
+
     rgb_matrix = parse_rgb_str(args.rgb) if args.rgb else None
     if args.rgb and not rgb_matrix:
         log.error("Invalid RGB matrix format: %s", args.rgb)
@@ -226,16 +232,17 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
     )
 
     options = RenderOptions(
-        blur_radius   = args.blur_radius,
-        darken_alpha  = args.darken,
-        rgb_matrix    = rgb_matrix,
-        cover_fit     = args.cover_fit,
-        spine_source  = args.spine_source,
-        no_rotate     = args.no_rotate,
-        output_format = args.output_format,
-        skip_existing = args.skip_existing,
-        workers       = max(1, args.workers),
-        dry_run       = args.dry_run,
+        blur_radius      = args.blur_radius,
+        darken_alpha     = args.darken,
+        rgb_matrix       = rgb_matrix,
+        template_opacity = args.template_opacity,
+        cover_fit        = args.cover_fit,
+        spine_source     = args.spine_source,
+        no_rotate        = args.no_rotate,
+        output_format    = args.output_format,
+        skip_existing    = args.skip_existing,
+        workers          = max(1, args.workers),
+        dry_run          = args.dry_run,
     )
 
     from core.pipeline import RenderPipeline

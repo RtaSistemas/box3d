@@ -66,11 +66,12 @@ def compose_cover(
     )
 
     return _composite(
-        cover_img    = cover_img,
-        spine_img    = spine_strip,
-        geom         = geom,
-        rgb_matrix   = options.rgb_matrix,
-        template_img = template_img,
+        cover_img         = cover_img,
+        spine_img         = spine_strip,
+        geom              = geom,
+        rgb_matrix        = options.rgb_matrix,
+        template_opacity  = options.template_opacity,
+        template_img      = template_img,
     )
 
 
@@ -79,11 +80,12 @@ def compose_cover(
 # ---------------------------------------------------------------------------
 
 def _composite(
-    cover_img:    Image.Image,
-    spine_img:    Image.Image,
+    cover_img:        Image.Image,
+    spine_img:        Image.Image,
     geom,
-    rgb_matrix:   str | None,
-    template_img: Image.Image,
+    rgb_matrix:       str | None,
+    template_img:     Image.Image,
+    template_opacity: float = 1.0,
 ) -> Image.Image:
     """Five-step compositing pipeline (spine → cover → screen → dstin → return)."""
     assert template_img is not None, (
@@ -97,6 +99,14 @@ def _composite(
         apply_color_matrix(template, rgb_matrix)
         if rgb_matrix else template
     )
+
+    # Scale down the template alpha channel to attenuate lighting/shadow effects.
+    # Operates only on alpha — RGB values (lighting information) are preserved so
+    # the blend shape is maintained; only the contribution strength is reduced.
+    if template_opacity < 1.0:
+        r, g, b, a = colored_template.split()
+        a = a.point(lambda v: round(v * template_opacity))
+        colored_template = Image.merge("RGBA", (r, g, b, a))
 
     # Step 1 — Spine warp
     # canvas is fully transparent → PIL alpha_composite is equivalent to

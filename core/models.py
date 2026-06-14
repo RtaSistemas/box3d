@@ -160,12 +160,13 @@ class RenderOptions:
     Rendering parameters supplied by the caller (CLI, API, …).
     Separated from the profile so that geometry stays immutable.
     """
-    blur_radius:  int        = 20
-    darken_alpha: int        = 180
-    rgb_matrix:   str | None = None
-    cover_fit:    CoverFit | None   = None   # overrides profile default
-    spine_source: SpineSource | None = None  # overrides profile default
-    no_rotate:    bool = False               # force rotate=0 on all slots
+    blur_radius:      int        = 20
+    darken_alpha:     int        = 180
+    rgb_matrix:       str | None = None
+    template_opacity: float      = 1.0       # 0.0 = no lighting, 1.0 = full (default)
+    cover_fit:        CoverFit | None   = None   # overrides profile default
+    spine_source:     SpineSource | None = None  # overrides profile default
+    no_rotate:        bool = False               # force rotate=0 on all slots
 
     output_format:  OutFormat = "webp"
     skip_existing:  bool      = False
