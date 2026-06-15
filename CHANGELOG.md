@@ -6,6 +6,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`--no-spine` flag** (`cli/main.py`, `web/server.py`, `gui/control_tab.py`,
+  `RenderOptions.no_spine`) — Skips spine strip generation and warp entirely.
+  Renders only the perspective-warped cover face with template compositing.
+  Cover-only renders differ visibly from the default; `no_spine` is guarded by
+  a `test_no_spine_skips_build_spine` regression test.
+- **Granular logo flags** (`RenderPipeline`):
+  - `--no-game-logo` / `no_game_logo=True` — Suppresses per-game marquee lookup
+    only; fixed top/bottom logos are still loaded and composited.
+  - `--no-fixed-logos` / `no_fixed_logos=True` — Suppresses fixed top/bottom
+    system logos only; game marquee is still auto-discovered and composited.
+  Both flags exposed in CLI, web API (`RenderRequest`), and GUI (checkboxes).
+  `--no-logos` keeps its existing semantics (disables all three).
+
+### Fixed
+
+- **`--no-logos` in CLI now also suppresses game marquees** — Previously the
+  `no_logos=True` flag was not forwarded from `cmd_render()` to `RenderPipeline`,
+  so `--no-logos` only prevented fixed logo path resolution but game marquees were
+  still loaded per-cover. `no_logos` is now passed explicitly to the pipeline.
+
+---
+
 ## [3.0.7RC] — 2026-06
 
 ### Added

@@ -1788,3 +1788,181 @@ class TestDiagnostics:
         assert "WARNING" in captured.err
         assert "disk full" in captured.err
         assert isinstance(result, Path)
+
+
+# ---------------------------------------------------------------------------
+# --no-spine and granular logo flags
+# ---------------------------------------------------------------------------
+
+class TestNoSpineAndGranularLogos:
+    """Tests for --no-spine (RenderOptions.no_spine) and granular logo flags
+    (no_game_logo / no_fixed_logos on RenderPipeline)."""
+
+    # ── no_spine ──────────────────────────────────────────────────────────────
+
+    def test_no_spine_renders_without_error(self, tmp_path):
+        """RenderOptions(no_spine=True) must produce a successful render."""
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1, no_spine=True),
+            logo_paths={},
+            marquees_dir=tmp_path / "nomarq",
+        ).run()
+        assert stats.succeeded == 1
+
+    def test_no_spine_result_differs_from_default(self, tmp_path):
+        """A no-spine render must produce a pixel-different result from the normal render."""
+        import shutil, numpy as np
+        from PIL import Image
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        registry = ProfileRegistry(PROFILES).load()
+        common = dict(
+            profile=registry.get("mvs"),
+            covers_dir=covers,
+            logo_paths={},
+            marquees_dir=tmp_path / "nomarq",
+        )
+
+        from core.pipeline import RenderPipeline
+
+        out_normal = tmp_path / "normal"; out_normal.mkdir()
+        RenderPipeline(
+            output_dir=out_normal,
+            options=RenderOptions(workers=1, no_spine=False),
+            **common,
+        ).run()
+
+        out_nospine = tmp_path / "nospine"; out_nospine.mkdir()
+        RenderPipeline(
+            output_dir=out_nospine,
+            options=RenderOptions(workers=1, no_spine=True),
+            **common,
+        ).run()
+
+        img_normal  = np.array(Image.open(next(out_normal.glob("*.webp"))).convert("RGBA"), dtype=np.float32)
+        img_nospine = np.array(Image.open(next(out_nospine.glob("*.webp"))).convert("RGBA"), dtype=np.float32)
+        assert not np.array_equal(img_normal, img_nospine), \
+            "no_spine render should differ from normal render"
+
+    def test_no_spine_skips_build_spine(self, tmp_path):
+        """With no_spine=True, build_spine must never be called."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        from engine import compositor as ec
+
+        with patch.object(ec, "build_spine", wraps=ec.build_spine) as mock_bs:
+            RenderPipeline(
+                profile=ProfileRegistry(PROFILES).load().get("mvs"),
+                covers_dir=covers,
+                output_dir=tmp_path / "out",
+                options=RenderOptions(workers=1, no_spine=True),
+                logo_paths={},
+                marquees_dir=tmp_path / "nomarq",
+            ).run()
+
+        mock_bs.assert_not_called()
+
+    # ── granular logo flags ───────────────────────────────────────────────────
+
+    def test_no_game_logo_suppresses_marquee_only(self, tmp_path):
+        """no_game_logo=True must skip _load_game_logo; fixed logos are still loaded."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "nomarq",
+            no_game_logo=True,
+        )
+        with patch.object(pipeline, "_load_game_logo") as mock_game, \
+             patch.object(pipeline, "_load_logo") as mock_fixed:
+            pipeline.run()
+
+        mock_game.assert_not_called()
+        mock_fixed.assert_called()  # top/bottom logos still attempted
+
+    def test_no_fixed_logos_suppresses_system_logos_only(self, tmp_path):
+        """no_fixed_logos=True must skip top/bottom logos; game marquee is still loaded."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "nomarq",
+            no_fixed_logos=True,
+        )
+        with patch.object(pipeline, "_load_game_logo") as mock_game, \
+             patch.object(pipeline, "_load_logo") as mock_fixed:
+            pipeline.run()
+
+        mock_fixed.assert_not_called()
+        mock_game.assert_called()  # game logo still attempted
+
+    def test_no_logos_still_suppresses_all(self, tmp_path):
+        """Backward compat: no_logos=True must still suppress game logo + fixed logos."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1),
+            logo_paths={},
+            marquees_dir=tmp_path / "nomarq",
+            no_logos=True,
+        )
+        with patch.object(pipeline, "_load_game_logo") as mock_game, \
+             patch.object(pipeline, "_load_logo") as mock_fixed:
+            pipeline.run()
+
+        mock_game.assert_not_called()
+        mock_fixed.assert_not_called()
+
+    def test_no_spine_and_no_logos_combined(self, tmp_path):
+        """no_spine=True + no_logos=True must render successfully without any logos or spine."""
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        stats = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=tmp_path / "out",
+            options=RenderOptions(workers=1, no_spine=True),
+            logo_paths={},
+            marquees_dir=tmp_path / "nomarq",
+            no_logos=True,
+        ).run()
+        assert stats.succeeded == 1

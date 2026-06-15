@@ -99,6 +99,9 @@ class RenderRequest(BaseModel):
     skip_existing:    bool  = Field(False)
     dry_run:          bool  = Field(False)
     no_logos:         bool  = Field(False)
+    no_game_logo:     bool  = Field(False, description="Disable per-game marquee logo only")
+    no_fixed_logos:   bool  = Field(False, description="Disable fixed top/bottom system logos only")
+    no_spine:         bool  = Field(False, description="Skip spine strip — render cover face only")
     template_opacity: float = Field(1.0, ge=0.0, le=1.0,
                                     description="Template lighting opacity (0.0=none, 1.0=full)")
     warp_kernel: Literal["lbb", "nohalo", "bicubic", "bilinear"] = Field(
@@ -265,6 +268,7 @@ async def start_render(
         cover_fit        = payload.cover_fit,
         spine_source     = payload.spine_source,  # type: ignore[arg-type]  (Literal validated by Pydantic pattern)
         warp_kernel      = payload.warp_kernel,
+        no_spine         = payload.no_spine,
         output_format    = payload.output_format,
         skip_existing    = payload.skip_existing,
         workers          = payload.workers,
@@ -282,17 +286,20 @@ async def start_render(
 
         from core.pipeline import RenderPipeline
 
+        logo_paths = {} if (payload.no_logos or payload.no_fixed_logos) else {
+            "top":    _auto_logo(profile.root / "assets", "logo_top"),
+            "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
+        }
         pipeline = RenderPipeline(
-            profile      = profile,
-            covers_dir   = covers_dir,
-            output_dir   = output_dir,
-            options      = options,
-            logo_paths   = {
-                "top":    _auto_logo(profile.root / "assets", "logo_top"),
-                "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
-            },
-            marquees_dir = marquees_dir or (profile.root / "assets"),
-            no_logos     = payload.no_logos,
+            profile        = profile,
+            covers_dir     = covers_dir,
+            output_dir     = output_dir,
+            options        = options,
+            logo_paths     = logo_paths,
+            marquees_dir   = marquees_dir or (profile.root / "assets"),
+            no_logos       = payload.no_logos,
+            no_game_logo   = payload.no_game_logo,
+            no_fixed_logos = payload.no_fixed_logos,
         )
 
         first_stem: str | None = None

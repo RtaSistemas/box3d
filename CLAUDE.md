@@ -75,7 +75,7 @@ New profiles require **zero code changes** — drop a directory in `profiles/` a
 
 4. **Circuit breaker in pipeline:** Aborts batch if consecutive errors exceed `_CB_MAX_CONSECUTIVE = 10` OR total errors exceed `_CB_PCT_THRESHOLD = 20%` of processed files. The percentage branch requires a minimum of 3 errors before it can activate (prevents single bad files in small batches from aborting the run).
 
-5. **Immutable domain models:** Profile geometry/layout dataclasses use `@dataclass(frozen=True)`. `RenderOptions` is mutable (not frozen) but validates `template_opacity ∈ [0.0, 1.0]` and `warp_kernel ∈ {lbb, nohalo, bicubic, bilinear}` in `__post_init__`.
+5. **Immutable domain models:** Profile geometry/layout dataclasses use `@dataclass(frozen=True)`. `RenderOptions` is mutable (not frozen) but validates `template_opacity ∈ [0.0, 1.0]` and `warp_kernel ∈ {lbb, nohalo, bicubic, bilinear}` in `__post_init__`. The `no_spine` flag skips the spine strip entirely; granular logo flags (`no_game_logo`, `no_fixed_logos`) live on `RenderPipeline`, not on `RenderOptions`.
 
 6. **Path-traversal protection in registry:** Profile names must match `^[a-zA-Z0-9_-]+$` before any filesystem access.
 
@@ -290,7 +290,10 @@ box3d render --profile <name>
   --skip-existing         Skip already-rendered files
   --dry-run               Validate inputs without rendering
   --no-rotate             Disable logo rotation on spine
-  --no-logos              Skip all spine logo overlays
+  --no-spine              Skip spine strip entirely — render cover face only
+  --no-logos              Skip all spine logo overlays (game marquee + fixed top/bottom)
+  --no-game-logo          Skip per-game marquee logo only (fixed top/bottom logos kept)
+  --no-fixed-logos        Skip fixed top/bottom system logos only (game marquee kept)
   --verbose               DEBUG-level logging
   --log-file <path>       Write log to file
 

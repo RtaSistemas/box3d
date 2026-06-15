@@ -97,8 +97,14 @@ Examples:
                           help="Template lighting opacity 0.0–1.0 (default: 1.0; lower = attenuated)")
     render_p.add_argument("--no-rotate", "-r", action="store_true",
                           help="Force all logo rotations to 0 degrees")
+    render_p.add_argument("--no-spine", action="store_true",
+                          help="Render cover only — skip spine strip entirely")
     render_p.add_argument("--no-logos", "-l", action="store_true",
-                          help="Disable all logo overlays")
+                          help="Disable all logo overlays (game marquee + fixed top/bottom)")
+    render_p.add_argument("--no-game-logo", action="store_true",
+                          help="Disable per-game marquee logo only (keeps fixed logos)")
+    render_p.add_argument("--no-fixed-logos", action="store_true",
+                          help="Disable fixed top/bottom system logos only (keeps game marquee)")
     render_p.add_argument("--top-logo",    type=str,
                           help="Path to top spine logo override")
     render_p.add_argument("--bottom-logo", type=str,
@@ -219,7 +225,7 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         return 1
 
     logo_paths: dict[str, Path | None] = {"top": None, "bottom": None}
-    if not args.no_logos:
+    if not (args.no_logos or args.no_fixed_logos):
         logo_paths["top"] = (
             Path(args.top_logo)    if args.top_logo
             else _auto_logo(profile.root / "assets", "logo_top")
@@ -243,6 +249,7 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
         spine_source     = args.spine_source,
         warp_kernel      = args.warp_kernel,
         no_rotate        = args.no_rotate,
+        no_spine         = args.no_spine,
         output_format    = args.output_format,
         skip_existing    = args.skip_existing,
         workers          = max(1, args.workers),
@@ -251,12 +258,15 @@ def cmd_render(args: argparse.Namespace, registry: ProfileRegistry) -> int:
 
     from core.pipeline import RenderPipeline
     pipeline = RenderPipeline(
-        profile      = profile,
-        covers_dir   = covers_dir,
-        output_dir   = output_dir,
-        options      = options,
-        logo_paths   = logo_paths,
-        marquees_dir = marquees_dir,
+        profile        = profile,
+        covers_dir     = covers_dir,
+        output_dir     = output_dir,
+        options        = options,
+        logo_paths     = logo_paths,
+        marquees_dir   = marquees_dir,
+        no_logos       = args.no_logos,
+        no_game_logo   = args.no_game_logo,
+        no_fixed_logos = args.no_fixed_logos,
     )
 
     _progress_shown = False

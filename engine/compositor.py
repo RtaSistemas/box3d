@@ -55,16 +55,18 @@ def compose_cover(
     geom   = _effective_geometry(profile, options)
     layout = _effective_layout(profile, options)
 
-    spine_strip = build_spine(
-        cover        = cover_img,
-        geom         = geom,
-        layout       = layout,
-        blur_radius  = options.blur_radius,
-        darken_alpha = options.darken_alpha,
-        game_logo    = game_logo,
-        top_logo     = top_logo,
-        bottom_logo  = bottom_logo,
-    )
+    spine_strip: Image.Image | None = None
+    if not options.no_spine:
+        spine_strip = build_spine(
+            cover        = cover_img,
+            geom         = geom,
+            layout       = layout,
+            blur_radius  = options.blur_radius,
+            darken_alpha = options.darken_alpha,
+            game_logo    = game_logo,
+            top_logo     = top_logo,
+            bottom_logo  = bottom_logo,
+        )
 
     return _composite(
         cover_img         = cover_img,
@@ -83,14 +85,19 @@ def compose_cover(
 
 def _composite(
     cover_img:        Image.Image,
-    spine_img:        Image.Image,
+    spine_img:        Image.Image | None,
     geom,
     rgb_matrix:       str | None,
     template_img:     Image.Image,
     template_opacity: float = 1.0,
     warp_kernel:      str = "lbb",
 ) -> Image.Image:
-    """Five-step compositing pipeline (spine -> cover -> screen -> dstin -> return)."""
+    """Five-step compositing pipeline (spine -> cover -> screen -> dstin -> return).
+
+    When *spine_img* is ``None`` (``--no-spine`` mode) Step 1 is skipped and a
+    fully-transparent canvas is used as the spine placeholder for the silhouette
+    mask, so only the cover quad contributes to the DstIn clip boundary.
+    """
     assert template_img is not None, (
         "template_img is required — engine/ must not perform disk I/O. "
         "Pre-load the template in the pipeline layer."
@@ -111,13 +118,15 @@ def _composite(
         a = a.point(lambda v: round(v * template_opacity))
         colored_template = Image.merge("RGBA", (r, g, b, a))
 
-    # Step 1 — Spine warp
-    # canvas is fully transparent → PIL alpha_composite is equivalent to
-    # linear_alpha_composite here (no actual blending occurs), and faster.
-    spine_src    = resize_for_fit(spine_img, geom.spine_w, geom.spine_h, "stretch")
-    spine_warped = warp(spine_src, tw, th, geom.spine_quad.as_list(), kernel=warp_kernel)
-    canvas       = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
-    canvas       = Image.alpha_composite(canvas, spine_warped)
+    # Step 1 — Spine warp (skipped when no_spine=True)
+    canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+    if spine_img is not None:
+        spine_src    = resize_for_fit(spine_img, geom.spine_w, geom.spine_h, "stretch")
+        spine_warped = warp(spine_src, tw, th, geom.spine_quad.as_list(), kernel=warp_kernel)
+        canvas       = Image.alpha_composite(canvas, spine_warped)
+    else:
+        # Transparent placeholder so build_silhouette_mask receives a valid RGBA source.
+        spine_warped = canvas
 
     # Step 2 — Cover warp + unsharp mask (RGB only) to recover sharpness lost
     #           during perspective resampling; alpha is left untouched so the

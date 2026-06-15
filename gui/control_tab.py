@@ -277,18 +277,24 @@ class ControlTab:
         # ── Flags ─────────────────────────────────────────────────────────────
         r = self._heading(self._cfg, "▸ FLAGS", r)
 
-        self._skip_var     = ctk.BooleanVar(value=False)
-        self._dry_var      = ctk.BooleanVar(value=False)
-        self._no_logos_var = ctk.BooleanVar(value=False)
+        self._skip_var          = ctk.BooleanVar(value=False)
+        self._dry_var           = ctk.BooleanVar(value=False)
+        self._no_logos_var      = ctk.BooleanVar(value=False)
+        self._no_game_logo_var  = ctk.BooleanVar(value=False)
+        self._no_fixed_logos_var = ctk.BooleanVar(value=False)
+        self._no_spine_var      = ctk.BooleanVar(value=False)
 
         flags_frame = ctk.CTkFrame(self._cfg, fg_color="transparent")
         flags_frame.grid(row=r, column=0, sticky="ew", padx=12, pady=(0, 12))
         r += 1
 
         for text, var in [
-            ("Skip existing", self._skip_var),
-            ("Dry run",       self._dry_var),
-            ("No logos",      self._no_logos_var),
+            ("Skip existing",   self._skip_var),
+            ("Dry run",         self._dry_var),
+            ("No logos (all)",  self._no_logos_var),
+            ("No game logo",    self._no_game_logo_var),
+            ("No fixed logos",  self._no_fixed_logos_var),
+            ("No spine",        self._no_spine_var),
         ]:
             ctk.CTkCheckBox(
                 flags_frame, text=text, variable=var,
@@ -706,6 +712,7 @@ class ControlTab:
             cover_fit        = self._cover_fit_var.get() or None,         # type: ignore[assignment]
             spine_source     = spine_src,
             warp_kernel      = self._warp_kernel_var.get() or "lbb",
+            no_spine         = self._no_spine_var.get(),
             output_format    = self._format_var.get(),                    # type: ignore[assignment]
             skip_existing    = self._skip_var.get(),
             workers          = workers,
@@ -740,14 +747,17 @@ class ControlTab:
         threading.Thread(
             target=self._run_pipeline,
             args=(profile, covers_dir, output_dir, options,
-                  marquees_dir, self._no_logos_var.get()),
+                  marquees_dir, self._no_logos_var.get(),
+                  self._no_game_logo_var.get(),
+                  self._no_fixed_logos_var.get()),
             daemon=True,
         ).start()
 
         self._parent.after(100, self._poll_queue)
 
     def _run_pipeline(
-        self, profile, covers_dir, output_dir, options, marquees_dir, no_logos,
+        self, profile, covers_dir, output_dir, options, marquees_dir,
+        no_logos, no_game_logo, no_fixed_logos,
     ) -> None:
         from core.models import CoverResult
 
@@ -767,17 +777,20 @@ class ControlTab:
             })
 
         try:
+            logo_paths = {} if (no_logos or no_fixed_logos) else {
+                "top":    _auto_logo(profile.root / "assets", "logo_top"),
+                "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
+            }
             pipeline = RenderPipeline(
-                profile      = profile,
-                covers_dir   = covers_dir,
-                output_dir   = output_dir,
-                options      = options,
-                logo_paths   = {
-                    "top":    _auto_logo(profile.root / "assets", "logo_top"),
-                    "bottom": _auto_logo(profile.root / "assets", "logo_bottom"),
-                },
-                marquees_dir = marquees_dir or (profile.root / "assets"),
-                no_logos     = no_logos,
+                profile        = profile,
+                covers_dir     = covers_dir,
+                output_dir     = output_dir,
+                options        = options,
+                logo_paths     = logo_paths,
+                marquees_dir   = marquees_dir or (profile.root / "assets"),
+                no_logos       = no_logos,
+                no_game_logo   = no_game_logo,
+                no_fixed_logos = no_fixed_logos,
             )
             report = pipeline.run(on_progress=on_progress, stop_event=self._cancel_event)
         except Exception as exc:
@@ -1020,9 +1033,12 @@ class ControlTab:
         self._update_rgb_swatch()
 
         for key, var in [
-            ("skip_existing", self._skip_var),
-            ("dry_run",       self._dry_var),
-            ("no_logos",      self._no_logos_var),
+            ("skip_existing",   self._skip_var),
+            ("dry_run",         self._dry_var),
+            ("no_logos",        self._no_logos_var),
+            ("no_game_logo",    self._no_game_logo_var),
+            ("no_fixed_logos",  self._no_fixed_logos_var),
+            ("no_spine",        self._no_spine_var),
         ]:
             if (v := cfg.get(key)) is not None:
                 var.set(bool(v))
@@ -1046,9 +1062,12 @@ class ControlTab:
             "rgb_r":         self._rgb_r.get(),
             "rgb_g":         self._rgb_g.get(),
             "rgb_b":         self._rgb_b.get(),
-            "skip_existing": self._skip_var.get(),
-            "dry_run":       self._dry_var.get(),
-            "no_logos":      self._no_logos_var.get(),
+            "skip_existing":   self._skip_var.get(),
+            "dry_run":         self._dry_var.get(),
+            "no_logos":        self._no_logos_var.get(),
+            "no_game_logo":    self._no_game_logo_var.get(),
+            "no_fixed_logos":  self._no_fixed_logos_var.get(),
+            "no_spine":        self._no_spine_var.get(),
         })
         _save_config_file(cfg)
 
