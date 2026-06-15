@@ -54,7 +54,7 @@ covers/sf2.webp  +  profiles/mvs/  →  output/sf2.webp
 | **Visual profile editor** | Box3D Designer Pro: browser-based and native GUI authoring tool, Dark/Light/Retro themes |
 | **Desktop GUI** | CustomTkinter app with Control + Designer tabs — no browser required |
 | **Standalone executables** | PyInstaller `--onefile` builds for Linux x86-64 and Windows x86-64 |
-| **Multiple output formats** | WebP (q 92, default) or lossless PNG |
+| **Multiple output formats** | WebP (q 95, default) or lossless PNG |
 | **Incremental batches** | `--skip-existing` skips already-rendered outputs |
 | **Dry-run validation** | `--dry-run` validates inputs and reports without writing any files |
 | **Cooperative cancellation** | `stop_event` parameter on `RenderPipeline.run()` — clean thread-safe cancellation without exception injection |
@@ -566,7 +566,7 @@ transparent canvas  (template_size)
         ├─ 4. DstIn — clip to union silhouette
         │       build_silhouette_mask() → dst_in(canvas, mask)
         │
-        └─ 5. Save  (WebP q 92  or  PNG lossless)
+        └─ 5. Save  (WebP q 95  or  PNG lossless)
 ```
 
 **Alpha-weighted Screen blend (step 3):** Standard Screen blend washes out dark covers because near-transparent template pixels still contribute luminance. Weighting by `template_alpha / 255` means zero contribution where the template is fully transparent — the correct physical model.

@@ -6,6 +6,52 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [3.0.7RC] — 2026-06
+
+### Added
+
+- **`--warp-kernel` CLI option** (`cli/main.py`) — Selects the pyvips interpolation kernel
+  per-render: `lbb` (default) | `nohalo` (EWA, best quality, ~1.7× slower) | `bicubic` |
+  `bilinear`. Propagated through `RenderOptions`, `compose_cover()`, and `warp()`.
+- **`--template-opacity` CLI option** (`cli/main.py`, `web/server.py`, `gui/control_tab.py`)
+  — Attenuates the template lighting/shadow contribution (0.0 = no template, 1.0 = full).
+- **`get_backend_label(kernel)` function** (`engine/perspective.py`) — Returns a per-render
+  backend label showing the actual kernel in use. Pipeline log now reads "kernel=nohalo"
+  when the user selects nohalo instead of always showing the env-default.
+- **`RenderOptions.__post_init__` validation** (`core/models.py`) — `template_opacity`
+  outside `[0.0, 1.0]` and `warp_kernel` not in `{lbb, nohalo, bicubic, bilinear}` now
+  raise `ValueError` immediately instead of silently producing corrupted output.
+- **Warp kernel GUI dropdown** (`gui/control_tab.py`) — 4th selector column added to the
+  Control Center render options row, alongside Cover fit / Spine source / Format.
+- **Empty DLL guard** (`hooks/hook-pyvips.py`) — Emits a `warnings.warn` when `vips_bin`
+  is found but contains no `*.dll` files, preventing a silent build that falls back to PIL.
+- **12 new tests** (`tests/test_v2.py`) — `RenderOptions` validation (invalid opacity,
+  invalid kernel, valid boundaries), `compose_cover` opacity effects (0.0, 0.5 vs 1.0),
+  warp kernel propagation through options, `get_backend_label()` accuracy.
+
+### Changed
+
+- **WebP output quality** (`core/pipeline.py`) — Raised from `quality=92` to `quality=95`
+  for higher fidelity output at modest file size increase.
+- **Unsharp mask** (`engine/compositor.py`) — Strengthened from `radius=0.6, percent=25`
+  to `radius=1.0, percent=80, threshold=3` for noticeably sharper cover faces.
+- **Logo rotation resampler** (`engine/spine_builder.py`) — Changed from `Image.BICUBIC`
+  to `Image.LANCZOS` for higher quality logo rotation.
+
+### Fixed
+
+- **`cli/diagnostics.py` write crash** — `out_path.write_text()` is now wrapped in
+  `try/except OSError` so an I/O failure (permissions, disk full) does not crash the CLI
+  before any render starts.
+- **`gui/app.py` font scale config crash** — `fonts.init_scale()` is now called inside
+  `try/except (ValueError, TypeError)` with a fallback to `1.0`, so a corrupted
+  `font_scale` value in `gui_config.json` no longer crashes GUI startup.
+- **`core/pipeline.py` warp_kernel propagation** — `compose_cover()` is now called with
+  explicit `warp_kernel=self.options.warp_kernel` instead of relying on a silent fallback.
+- **Version bump**: `3.0.0RC` → `3.0.7RC` (`core/version.py`, `gui/constants.py`).
+
+---
+
 ## [Unreleased]
 
 ### Added
@@ -161,10 +207,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   (radius=1.0)` applied to the union silhouette mask before `dst_in` so the
   hard binary alpha of template PNGs is anti-aliased; eliminates the stair-step
   outline visible in previous releases.
-- **Over-aggressive unsharp mask** (`engine/compositor.py`) — Reduced from
-  `UnsharpMask(r=0.8, 40%, threshold=2)` to `r=0.6, 25%, threshold=3`;
-  stronger values amplified RGB contrast at the feathered warp boundary, making
-  aliasing more visible.
+- **Unsharp mask tuned** (`engine/compositor.py`) — Reduced from
+  `UnsharpMask(r=0.8, 40%, threshold=2)` to `r=0.6, 25%, threshold=3` to avoid
+  amplifying RGB contrast at the feathered warp boundary (later raised to
+  `r=1.0, 80%` in v3.0.7RC after the lbb alpha gradient eliminated the aliasing concern).
 - **`.gitignore` malformed entries** — `.coverage` and `coverage.json` were
   stored as a single line with a literal `\n` (written by `echo`); now two
   separate lines under a `# Test coverage artefacts` header.

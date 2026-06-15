@@ -1727,3 +1727,64 @@ class TestInputValidation:
             f"Version mismatch: core.version={__version__!r}, "
             f"bootstrap._VERSION={_VERSION!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# cli/diagnostics.py
+# ---------------------------------------------------------------------------
+
+class TestDiagnostics:
+    """Tests for cli.diagnostics.write_pyvips_diagnostic()."""
+
+    def test_writes_file_to_directory(self, tmp_path):
+        """write_pyvips_diagnostic must create a log file under the given directory."""
+        from cli.diagnostics import write_pyvips_diagnostic
+
+        result = write_pyvips_diagnostic(tmp_path)
+
+        assert result.exists(), "diagnostic file was not created"
+        assert result.parent == tmp_path
+        assert result.name.startswith("pyvips_diagnostic_")
+        assert result.suffix == ".log"
+
+    def test_returns_path_object(self, tmp_path):
+        """write_pyvips_diagnostic must return a Path, not a string."""
+        from cli.diagnostics import write_pyvips_diagnostic
+
+        result = write_pyvips_diagnostic(tmp_path)
+
+        assert isinstance(result, Path)
+
+    def test_creates_directory_if_missing(self, tmp_path):
+        """write_pyvips_diagnostic must create log_dir when it does not exist."""
+        from cli.diagnostics import write_pyvips_diagnostic
+
+        nested = tmp_path / "sub" / "logs"
+        result = write_pyvips_diagnostic(nested)
+
+        assert nested.exists()
+        assert result.exists()
+
+    def test_report_contains_expected_sections(self, tmp_path):
+        """The written report must contain all mandatory diagnostic sections."""
+        from cli.diagnostics import write_pyvips_diagnostic
+
+        path = write_pyvips_diagnostic(tmp_path)
+        content = path.read_text(encoding="utf-8")
+
+        for section in ("[PLATFORM]", "[PYINSTALLER]", "[SYS.PATH]",
+                        "[PYVIPS IMPORT]", "[CTYPES DLL LOAD PROBES]"):
+            assert section in content, f"Missing section {section!r} in diagnostic report"
+
+    def test_handles_oserror_gracefully(self, tmp_path, capsys):
+        """write_pyvips_diagnostic must not raise when write_text fails with OSError."""
+        from unittest.mock import patch
+        from cli.diagnostics import write_pyvips_diagnostic
+
+        with patch("pathlib.Path.write_text", side_effect=OSError("disk full")):
+            result = write_pyvips_diagnostic(tmp_path)
+
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "disk full" in captured.err
+        assert isinstance(result, Path)

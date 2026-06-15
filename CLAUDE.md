@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**box3d** (v3.0.0RC) is a Python CLI application that renders photorealistic 3D box art from flat game cover images. It warps front cover + spine images onto box templates using perspective transforms, composites them with RGBA templates, and outputs WebP/PNG files.
+**box3d** (v3.0.7RC) is a Python CLI application that renders photorealistic 3D box art from flat game cover images. It warps front cover + spine images onto box templates using perspective transforms, composites them with RGBA templates, and outputs WebP/PNG files.
 
 - **Language:** Python 3.11+
 - **Runtime dependencies:** `Pillow >= 10.0`, `NumPy >= 1.24`
@@ -30,19 +30,22 @@ Optional components (`web/`, `gui/`) sit alongside this stack and call into `cor
 
 | Module | Responsibility |
 |---|---|
-| `core/models.py` | Immutable frozen dataclasses (`Profile`, `RenderOptions`, `ProfileGeometry`, etc.) |
+| `core/models.py` | Domain dataclasses (`Profile`, `ProfileGeometry`, `SpineLayout` frozen; `RenderOptions` mutable with `__post_init__` validation) |
 | `core/registry.py` | Profile discovery & lazy loading from filesystem |
 | `core/pipeline.py` | Batch render orchestration (ThreadPoolExecutor). **Only module that reads/writes disk.** |
-| `engine/perspective.py` | 8-coefficient perspective warp using numpy.linalg.solve + PIL BICUBIC |
-| `engine/blending.py` | Alpha-weighted Screen blend, DstIn silhouette clipping, color matrix |
+| `engine/perspective.py` | 8-coefficient perspective warp; pyvips `mapim` primary path (lbb/nohalo/bicubic/bilinear kernels), PIL BICUBIC fallback; `get_backend_label(kernel)` for per-render logging |
+| `engine/blending.py` | Alpha-weighted Screen blend in linear light, DstIn silhouette clipping, color matrix |
 | `engine/spine_builder.py` | 2D spine strip generation (sample → blur → darken → logos) |
 | `engine/compositor.py` | Entry point for single-cover composition (coordinates all engine modules) |
 | `cli/main.py` | argparse setup, CLI command handlers (`render`, `profiles`, `designer`, `serve`), logging config |
 | `cli/bootstrap.py` | First-run path resolution (PyInstaller-aware), folder creation, profile copying |
+| `cli/diagnostics.py` | pyvips diagnostic report writer (startup) — captures platform, DLLs, import status |
 | `cli/utils.py` | `parse_rgb_str()` for "R,G,B" → color matrix conversion |
 | `web/server.py` | Optional FastAPI HTTP API + SSE progress stream + static SPA mount |
-| `gui/app.py` | Optional CustomTkinter desktop GUI — thin shell (header + CTkTabview) |
-| `gui/constants.py` | Shared colour palette, font constants, and designer object colours |
+| `gui/app.py` | Optional CustomTkinter desktop GUI — thin shell (header + inline tab nav + font scale) |
+| `gui/constants.py` | Shared colour palette used by all GUI modules |
+| `gui/fonts.py` | Font scale registry — `init_scale()`, `set_scale()`, `step_up/down()`, `F()` factory |
+| `gui/config.py` | GUI config persistence (`data/gui_config.json`) — `load_config()`, `save_config()` |
 | `gui/control_tab.py` | Control Center tab: batch-render UI, profile selector, live preview |
 | `gui/designer_tab.py` | Designer Pro tab: visual profile editor with canvas, quad editing, JSON export |
 | `gui/designer_engine.py` | Pure canvas interaction engine (zoom/pan, quad/handle drag, hit-testing) |
@@ -72,7 +75,7 @@ New profiles require **zero code changes** — drop a directory in `profiles/` a
 
 4. **Circuit breaker in pipeline:** Aborts batch if consecutive errors exceed `_CB_MAX_CONSECUTIVE = 10` OR total errors exceed `_CB_PCT_THRESHOLD = 20%` of processed files. The percentage branch requires a minimum of 3 errors before it can activate (prevents single bad files in small batches from aborting the run).
 
-5. **Immutable domain models:** All dataclasses use `@dataclass(frozen=True)`.
+5. **Immutable domain models:** Profile geometry/layout dataclasses use `@dataclass(frozen=True)`. `RenderOptions` is mutable (not frozen) but validates `template_opacity ∈ [0.0, 1.0]` and `warp_kernel ∈ {lbb, nohalo, bicubic, bilinear}` in `__post_init__`.
 
 6. **Path-traversal protection in registry:** Profile names must match `^[a-zA-Z0-9_-]+$` before any filesystem access.
 
@@ -273,11 +276,13 @@ box3d render --profile <name>
   --input <dir>           Source directory (default: data/inputs/covers)
   --output <dir>          Output directory (default: data/output/converted)
   --workers <n|auto>      Parallel workers (default: 4; "auto" = os.cpu_count())
-  --blur-radius <n>       Spine background blur 0–50 (default: 20)
+  --blur-radius <n>       Spine background blur 0–100 (default: 20)
   --darken <n>            Spine dark overlay alpha 0–255 (default: 180)
   --rgb <R,G,B>           RGB channel scaling (default: 1.0,1.0,1.0)
   --cover-fit <mode>      stretch | fit | crop (profile default)
   --spine-source <mode>   left | right | center (profile default)
+  --warp-kernel <kernel>  lbb | nohalo | bicubic | bilinear (default: lbb; nohalo = max quality, ~1.7x slower)
+  --template-opacity <f>  Template lighting opacity 0.0–1.0 (default: 1.0; lower = attenuated)
   --top-logo <path>       Override path to top spine logo
   --bottom-logo <path>    Override path to bottom spine logo
   --marquees-dir <dir>    Per-game marquee directory (default: data/inputs/marquees)
