@@ -23,6 +23,10 @@ from threading import Event, Lock
 
 from PIL import Image
 
+# Disable PIL's built-in decompression bomb guard: our own Lei de Ferro
+# (thumbnail before convert in _safe_open) is the sole size gate.
+Image.MAX_IMAGE_PIXELS = None
+
 from core.models import CoverResult, Profile, RenderOptions, RenderSummary
 
 log = logging.getLogger("box3d.pipeline")
@@ -42,15 +46,16 @@ def _safe_open(path: Path) -> Image.Image:
     """
     Open an image from disk and apply OOM Hardening (Lei de Ferro).
 
-    If the image exceeds 8192px on either axis, it is immediately
-    downscaled proportionally before being returned.
+    The size guard runs on the lazy Image.open() object — before any pixel
+    decode — so JPEG/WebP subsampling keeps the RAM peak proportional to the
+    output size, not the full source resolution.
     """
     with Image.open(path) as raw:
+        if raw.width > 8192 or raw.height > 8192:
+            log.warning("OOM Hardening: downscaling %s (%dx%d → ≤8192px)",
+                        path.name, raw.width, raw.height)
+            raw.thumbnail((8192, 8192), Image.BICUBIC)
         img = raw.convert("RGBA")
-    if img.width > 8192 or img.height > 8192:
-        log.warning("OOM Hardening: downscaling %s (%dx%d → ≤8192px)",
-                    path.name, img.width, img.height)
-        img.thumbnail((8192, 8192), Image.BICUBIC)
     return img
 
 
