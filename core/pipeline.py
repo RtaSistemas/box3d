@@ -333,12 +333,21 @@ class RenderPipeline:
                 warp_kernel  = self.options.warp_kernel,
             )
 
-            # --- Disk write: save final output ---
-            ext = output_path.suffix.lower()
-            if ext == ".webp":
-                result_img.save(str(output_path), "WEBP", quality=95, method=4)
-            else:
-                result_img.save(str(output_path), "PNG", optimize=False)
+            # --- Disk write: atomic temp+rename (POSIX-safe) ---
+            # Writing to a temp file then os.replace() ensures that a
+            # SIGKILL during encode never leaves a partial file at
+            # output_path — critical when --skip-existing is used.
+            ext      = output_path.suffix.lower()
+            tmp_path = output_path.with_suffix(".tmp")
+            try:
+                if ext == ".webp":
+                    result_img.save(str(tmp_path), "WEBP", quality=95, method=4)
+                else:
+                    result_img.save(str(tmp_path), "PNG", optimize=False)
+                tmp_path.replace(output_path)
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
 
             elapsed = time.perf_counter() - t0
             log.info("✔  %-46s (%.2fs)", str(rel), elapsed)
