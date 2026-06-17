@@ -22,6 +22,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
     system logos only; game marquee is still auto-discovered and composited.
   Both flags exposed in CLI, web API (`RenderRequest`), and GUI (checkboxes).
   `--no-logos` keeps its existing semantics (disables all three).
+- **12 new regression tests** (`TestAuditFixes`) — cover every critical finding
+  from BOX3D-AUDIT.md: blending RGBA mode assertions, cache race with 17
+  geometries, atomic delivery, OOM guard ordering, DecompressionBombError
+  suppression, engine I/O purity, and spine logo alpha correctness.
 
 ### Fixed
 
@@ -29,6 +33,36 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   `no_logos=True` flag was not forwarded from `cmd_render()` to `RenderPipeline`,
   so `--no-logos` only prevented fixed logo path resolution but game marquees were
   still loaded per-cover. `no_logos` is now passed explicitly to the pipeline.
+- **OOM guard ordering in `_safe_open`** (`core/pipeline.py`) — `thumbnail()` now
+  runs on the lazy `Image.open()` object *before* `convert("RGBA")` forces a full
+  pixel decode. For JPEG/WebP inputs >8192px this eliminates the ~324 MB RAM peak;
+  the decoder uses native subsampling to produce a reduced-resolution buffer.
+- **PIL `DecompressionBombError` suppressed** (`core/pipeline.py`) — Set
+  `Image.MAX_IMAGE_PIXELS = None` so inputs >89 Mpx are transparently handled by
+  our own 8192px guard instead of raising a confusing PIL error.
+- **Atomic output delivery** (`core/pipeline.py`) — `_process_one` now writes to
+  a `.tmp` sibling then calls `Path.replace()` for an atomic rename. A SIGKILL
+  during encode no longer leaves a corrupt file that `--skip-existing` silently
+  accepts on the next run.
+- **`_COORD_CACHE` race condition** (`engine/perspective.py`) — Added
+  `_COORD_CACHE_LOCK` (threading.Lock) around all compound read-modify-write
+  sequences. The numpy computation runs outside the lock so cache misses for
+  different geometries proceed in parallel.
+- **Blending RGBA mode assertions** (`engine/blending.py`) — `alpha_weighted_screen`
+  and `linear_alpha_composite` now assert `dst.mode == "RGBA"` at entry. Passing an
+  RGB image as dst previously caused a latent `IndexError` on `result[:,:,3]`.
+- **Narrow exception handling** — Three broad `except Exception: pass` clauses
+  replaced with specific types: `except ValueError` in `cli/utils.py:parse_rgb_str`;
+  `except (ImportError, OSError, AttributeError)` in pyvips import fallback;
+  `except Exception as exc: log.warning(...)` in GUI thumbnail load and config save.
+- **`import dataclasses` moved to module top** (`engine/compositor.py`) — Was
+  inside `_effective_geometry` and `_effective_layout`, running at every render call.
+- **`os.environ` removed from engine** (`engine/perspective.py`) — `BOX3D_WARP_BACKEND`
+  env var was read at import time, violating the engine purity contract. Kernel
+  selection now goes exclusively through the `kernel=` parameter on `warp()`.
+- **Spine logo alpha via PIL.point()** (`engine/spine_builder.py`) — Replaced a
+  NumPy `array→clip→fromarray` round-trip with `split()/point()/merge()`, saving
+  ~0.3 ms per logo (~0.9 s per 1000-cover batch with 3 logos each).
 
 ---
 

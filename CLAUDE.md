@@ -65,13 +65,13 @@ New profiles require **zero code changes** — drop a directory in `profiles/` a
 
 ## Key Design Principles
 
-1. **Engine modules are pure functions** — Accept `PIL.Image` objects, return `PIL.Image` objects. No disk I/O, no global state. Thread-safe by construction.
+1. **Engine modules are pure functions** — Accept `PIL.Image` objects, return `PIL.Image` objects. No disk I/O, no `os.environ`, no global state mutations. Thread-safe by construction.
 
-2. **I/O boundary is `core/pipeline.py` only** — All intermediate images live in RAM as `PIL.Image` objects. No temp files.
+2. **I/O boundary is `core/pipeline.py` only** — All intermediate images live in RAM as `PIL.Image` objects. Output is written via atomic temp+rename (`Path.replace()`); no partial files survive a crash.
 
 3. **OOM hardening at two independent layers:**
    - Profile load time: geometry validation (8192px hard ceiling)
-   - Image load time: `_safe_open()` downscales inputs before loading; `resize_for_fit()` clamps target dims to 8192px
+   - Image load time: `_safe_open()` applies `thumbnail()` on the *lazy* `Image.open()` object **before** `convert("RGBA")` — avoids full decode peak for oversized inputs. `Image.MAX_IMAGE_PIXELS = None` disables PIL's own 89 Mpx bomb guard; our Lei de Ferro is the sole gate.
 
 4. **Circuit breaker in pipeline:** Aborts batch if consecutive errors exceed `_CB_MAX_CONSECUTIVE = 10` OR total errors exceed `_CB_PCT_THRESHOLD = 20%` of processed files. The percentage branch requires a minimum of 3 errors before it can activate (prevents single bad files in small batches from aborting the run).
 
@@ -79,9 +79,9 @@ New profiles require **zero code changes** — drop a directory in `profiles/` a
 
 6. **Path-traversal protection in registry:** Profile names must match `^[a-zA-Z0-9_-]+$` before any filesystem access.
 
-7. **Cached homography:** `_solve_cached()` uses `@lru_cache` on perspective coefficients — identical quad geometry is computed only once per process.
+7. **Cached homography:** `_solve_cached()` uses `@lru_cache` on perspective coefficients — identical quad geometry is computed only once per process. The derived coordinate array cache (`_COORD_CACHE`) is guarded by `_COORD_CACHE_LOCK` (threading.Lock) for compound read-modify-write operations; the expensive numpy computation runs outside the lock.
 
-8. **Contract assertions at engine boundaries:** `compose_cover()` and `build_spine()` validate RGBA mode, dimension bounds, and parameter ranges at call sites; fail fast on invalid state.
+8. **Contract assertions at engine boundaries:** `compose_cover()`, `build_spine()`, `alpha_weighted_screen()`, and `linear_alpha_composite()` validate RGBA mode, dimension bounds, and parameter ranges at call sites; fail fast on invalid state.
 
 9. **Logo auto-discovery:** `_auto_logo(assets_dir, stem)` in `cli/main.py`, `gui/control_tab.py`, and `web/server.py` resolves logo files by checking `.png` then `.webp` extensions. GUI and web server must use this — never hardcode `logo_paths = {"top": None, "bottom": None}`.
 
