@@ -963,7 +963,7 @@ class TestPipelineEngineIoPurge:
         assert stats.succeeded == 1
 
     def test_safe_open_oom_guard_downscales(self, tmp_path):
-        """_safe_open must call thumbnail when image exceeds 8192px."""
+        """_safe_open must call thumbnail on the lazy raw object when image exceeds 8192px."""
         from unittest.mock import patch, MagicMock, PropertyMock
         from core.pipeline import _safe_open
 
@@ -972,17 +972,18 @@ class TestPipelineEngineIoPurge:
         img_path = tmp_path / "big.png"
         real.save(str(img_path))
 
-        # Make the in-memory image report itself as oversized
-        mock_img = MagicMock(spec=Image.Image)
-        type(mock_img).width  = PropertyMock(return_value=10000)
-        type(mock_img).height = PropertyMock(return_value=100)
+        # Mock the lazy `raw` object returned by `with Image.open(...) as raw:`
+        # The guard now checks raw.width/height BEFORE calling raw.convert("RGBA").
+        mock_raw = MagicMock(spec=Image.Image)
+        type(mock_raw).width  = PropertyMock(return_value=10000)
+        type(mock_raw).height = PropertyMock(return_value=100)
+        mock_raw.convert.return_value = Image.new("RGBA", (4, 4))
 
         with patch("PIL.Image.open") as mock_open:
-            # _safe_open uses `with Image.open(...) as raw:` — mock the context manager
-            mock_open.return_value.__enter__.return_value.convert.return_value = mock_img
+            mock_open.return_value.__enter__.return_value = mock_raw
             _safe_open(img_path)
 
-        mock_img.thumbnail.assert_called_once_with((8192, 8192), Image.BICUBIC)
+        mock_raw.thumbnail.assert_called_once_with((8192, 8192), Image.BICUBIC)
 
     def test_safe_open_no_downscale_when_within_limit(self, tmp_path):
         """_safe_open must NOT call thumbnail for images within 8192px."""
@@ -993,15 +994,16 @@ class TestPipelineEngineIoPurge:
         img_path = tmp_path / "normal.png"
         real.save(str(img_path))
 
-        mock_img = MagicMock(spec=Image.Image)
-        type(mock_img).width  = PropertyMock(return_value=800)
-        type(mock_img).height = PropertyMock(return_value=1000)
+        mock_raw = MagicMock(spec=Image.Image)
+        type(mock_raw).width  = PropertyMock(return_value=800)
+        type(mock_raw).height = PropertyMock(return_value=1000)
+        mock_raw.convert.return_value = Image.new("RGBA", (4, 4))
 
         with patch("PIL.Image.open") as mock_open:
-            mock_open.return_value.__enter__.return_value.convert.return_value = mock_img
+            mock_open.return_value.__enter__.return_value = mock_raw
             _safe_open(img_path)
 
-        mock_img.thumbnail.assert_not_called()
+        mock_raw.thumbnail.assert_not_called()
 
     def test_stop_event_cancels_pipeline_cooperatively(self, tmp_path):
         """stop_event set before run() skips pending covers without raising exceptions."""
@@ -1966,3 +1968,214 @@ class TestNoSpineAndGranularLogos:
             no_logos=True,
         ).run()
         assert stats.succeeded == 1
+
+
+# ===========================================================================
+# TestAuditFixes — regression tests for BOX3D-AUDIT findings
+# ===========================================================================
+
+class TestAuditFixes:
+    """Regression tests for every critical finding in BOX3D-AUDIT.md."""
+
+    # -----------------------------------------------------------------------
+    # HV-04 — blending RGBA mode assertions
+    # -----------------------------------------------------------------------
+
+    def test_alpha_weighted_screen_rejects_rgb_dst(self):
+        """alpha_weighted_screen must assert-fail when dst is RGB, not silently IndexError."""
+        dst_rgb = Image.new("RGB",  (10, 10), (128, 64, 32))
+        src     = Image.new("RGBA", (10, 10), (200, 100, 50, 128))
+        with pytest.raises(AssertionError, match="dst must be RGBA"):
+            alpha_weighted_screen(dst_rgb, src)
+
+    def test_linear_alpha_composite_rejects_rgb_dst(self):
+        """linear_alpha_composite must assert-fail when dst is RGB."""
+        dst_rgb = Image.new("RGB",  (10, 10), (50, 100, 150))
+        src     = Image.new("RGBA", (10, 10), (200, 100, 50, 200))
+        with pytest.raises(AssertionError, match="dst must be RGBA"):
+            linear_alpha_composite(dst_rgb, src)
+
+    def test_alpha_weighted_screen_accepts_rgba_dst(self):
+        """Sanity: alpha_weighted_screen must succeed when dst is RGBA."""
+        dst = Image.new("RGBA", (10, 10), (128, 64, 32, 255))
+        src = Image.new("RGBA", (10, 10), (200, 100, 50, 128))
+        result = alpha_weighted_screen(dst, src)
+        assert result.mode == "RGBA"
+
+    # -----------------------------------------------------------------------
+    # AF-04 — _COORD_CACHE thread safety with >_COORD_CACHE_MAX geometries
+    # -----------------------------------------------------------------------
+
+    def test_coord_cache_concurrent_17_geometries(self):
+        """_get_coord_array must not raise KeyError with 17 unique geometries in parallel."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from engine.perspective import _get_coord_array, solve_coefficients
+
+        # 17 distinct quad shapes — forces cache eviction with concurrent access
+        quads = [
+            [(0, 0), (w, 0), (w, h), (0, h)]
+            for w, h in [(200 + i * 10, 300 + i * 10) for i in range(17)]
+        ]
+
+        def compute(q):
+            src_pts = [(0, 0), (100, 0), (100, 100), (0, 100)]
+            coeffs  = solve_coefficients(src_pts, q)
+            return _get_coord_array(400, 400, coeffs)
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(compute, q) for q in quads]
+            # Any KeyError/race would surface here
+            results = [f.result() for f in as_completed(futures)]
+
+        assert len(results) == 17
+        for arr in results:
+            assert arr.shape == (400, 400, 2)
+
+    # -----------------------------------------------------------------------
+    # RD-02 — Atomic delivery: temp+rename
+    # -----------------------------------------------------------------------
+
+    def test_atomic_delivery_no_tmp_files_on_success(self, tmp_path):
+        """No .tmp files must survive in output_dir after a successful render."""
+        import shutil
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+
+        from core.pipeline import RenderPipeline
+        out = tmp_path / "out"
+        RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=out,
+            options=RenderOptions(workers=1),
+        ).run()
+
+        tmp_files = list(out.rglob("*.tmp"))
+        assert tmp_files == [], f"Unexpected .tmp files found: {tmp_files}"
+
+    def test_atomic_delivery_cleanup_on_save_error(self, tmp_path):
+        """On save failure the .tmp file must be deleted (no partial files left)."""
+        import shutil
+        from unittest.mock import patch
+        covers = tmp_path / "covers"; covers.mkdir()
+        shutil.copy(ASSETS / "cover.webp", covers / "cover.webp")
+        out = tmp_path / "out"; out.mkdir()
+
+        from core.pipeline import RenderPipeline
+        pipeline = RenderPipeline(
+            profile=ProfileRegistry(PROFILES).load().get("mvs"),
+            covers_dir=covers,
+            output_dir=out,
+            options=RenderOptions(workers=1),
+        )
+
+        # Simulate a disk-write failure on the .tmp file
+        orig_save = __import__("PIL.Image", fromlist=["Image"]).Image.save
+
+        def boom(self, fp, *args, **kwargs):
+            if str(fp).endswith(".tmp"):
+                raise OSError("simulated disk full")
+            return orig_save(self, fp, *args, **kwargs)
+
+        with patch("PIL.Image.Image.save", boom):
+            summary = pipeline.run()
+
+        # The cover must be recorded as an error (not ok)
+        assert summary.failed == 1
+        # No .tmp file must remain
+        tmp_files = list(out.rglob("*.tmp"))
+        assert tmp_files == [], f"Temp file not cleaned up: {tmp_files}"
+
+    # -----------------------------------------------------------------------
+    # PF-01 / RD-01 — _safe_open: thumbnail before convert
+    # -----------------------------------------------------------------------
+
+    def test_safe_open_downscales_large_image(self, tmp_path):
+        """_safe_open must return an image ≤8192px even for inputs >8192px."""
+        from core.pipeline import _safe_open
+        # Create an image slightly over the 8192px limit
+        big = Image.new("RGB", (9000, 500), (200, 100, 50))
+        big_path = tmp_path / "big.png"
+        big.save(str(big_path))
+
+        result = _safe_open(big_path)
+        assert result.width <= 8192
+        assert result.height <= 8192
+        assert result.mode == "RGBA"
+
+    def test_safe_open_no_decompression_bomb_error(self, tmp_path):
+        """_safe_open must not raise DecompressionBombError for inputs >89 Mpx."""
+        from core.pipeline import _safe_open
+        # 10000×10000 = 100 Mpx > PIL default limit of ~89 Mpx
+        huge = Image.new("RGB", (10_000, 10_000), (100, 150, 200))
+        huge_path = tmp_path / "huge.png"
+        huge.save(str(huge_path))
+
+        # Should complete without DecompressionBombError or any exception
+        result = _safe_open(huge_path)
+        assert result.width  <= 8192
+        assert result.height <= 8192
+        assert result.mode == "RGBA"
+
+    # -----------------------------------------------------------------------
+    # AF-01 — engine/perspective.py must not read os.environ
+    # -----------------------------------------------------------------------
+
+    def test_vips_kernel_is_constant_not_env_driven(self):
+        """_VIPS_KERNEL must be a plain constant, not influenced by os.environ."""
+        import os
+        import importlib
+        import engine.perspective as ep
+
+        # Store original value
+        original = ep._VIPS_KERNEL
+
+        # Setting env var after import must have no effect
+        os.environ["BOX3D_WARP_BACKEND"] = "bilinear"
+        try:
+            # Reload module to check if it re-reads env
+            importlib.reload(ep)
+            assert ep._VIPS_KERNEL == "lbb", (
+                f"_VIPS_KERNEL should always be 'lbb' default, got {ep._VIPS_KERNEL!r}"
+            )
+        finally:
+            os.environ.pop("BOX3D_WARP_BACKEND", None)
+            importlib.reload(ep)  # restore module to clean state
+
+    # -----------------------------------------------------------------------
+    # HV-03 — parse_rgb_str only catches ValueError
+    # -----------------------------------------------------------------------
+
+    def test_parse_rgb_str_returns_none_on_bad_format(self):
+        """parse_rgb_str must return None (not raise) for malformed input."""
+        from cli.utils import parse_rgb_str
+        assert parse_rgb_str("not,numbers,here") is None
+        assert parse_rgb_str("1.0,2.0")          is None   # only 2 values
+        assert parse_rgb_str("1.0,2.0,99.9")     is None   # out of [0..5] range
+
+    def test_parse_rgb_str_valid_input(self):
+        """parse_rgb_str must return a matrix string for valid R,G,B input."""
+        from cli.utils import parse_rgb_str
+        result = parse_rgb_str("1.0,0.9,1.1")
+        assert result is not None
+        assert "1.0" in result and "0.9" in result and "1.1" in result
+
+    # -----------------------------------------------------------------------
+    # PF-04 — spine logo alpha via PIL.point() (no NumPy round-trip)
+    # -----------------------------------------------------------------------
+
+    def test_spine_logo_alpha_applied_correctly(self):
+        """Logo alpha=0.5 must halve all alpha values in the logo strip."""
+        from engine.spine_builder import _paste_logo
+        from core.models import LogoSlot, ProfileGeometry, Quad, SpineLayout
+
+        canvas = Image.new("RGBA", (60, 200), (0, 0, 0, 0))
+        logo   = Image.new("RGBA", (40, 40),  (255, 255, 255, 200))
+
+        result = _paste_logo(canvas, logo, 60, 200, 50, 50, 100, 0.5, 0)
+
+        # After pasting with alpha=0.5, the composited logo alpha at the
+        # paste region should be roughly 100 (200 * 0.5), not the original 200.
+        # Check a pixel in the center of the paste area.
+        px = result.getpixel((30, 100))  # center of paste area
+        assert px[3] <= 110, f"Expected alpha ≈100 after 0.5 scale, got {px[3]}"
