@@ -69,10 +69,11 @@ try:
     import pyvips as _pyvips  # noqa: F401 — keep reference alive
     _PYVIPS_AVAILABLE = True
     log.info("pyvips %s available — using accelerated mapim warp", _pyvips.__version__)
-except Exception:
+except (ImportError, OSError, AttributeError) as exc:
     _pyvips = None            # type: ignore[assignment]
     _PYVIPS_AVAILABLE = False
-    log.info("pyvips not available — falling back to PIL BICUBIC warp")
+    log.info("pyvips not available (%s: %s) — falling back to PIL BICUBIC warp",
+             type(exc).__name__, exc)
 
 # Warp kernel used by the pyvips path.
 # Supported values: 'lbb' | 'nohalo' | 'bicubic' | 'bilinear'
