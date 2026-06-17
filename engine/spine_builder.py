@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 
-import numpy as np
 from PIL import Image, ImageFilter
 
 from core.models import ProfileGeometry, SpineLayout
@@ -177,10 +176,10 @@ def _paste_logo(
         logo = logo.resize((nw, nh), Image.LANCZOS)
     lw, lh = logo.size
 
-    # Apply opacity
-    arr = np.array(logo, dtype=np.float32)
-    arr[:, :, 3] = np.clip(arr[:, :, 3] * alpha, 0, 255)
-    logo = Image.fromarray(arr.astype(np.uint8), "RGBA")
+    # Apply opacity via PIL LUT — C-native, no NumPy round-trip copies.
+    r, g, b, a = logo.split()
+    a    = a.point(lambda v: round(v * alpha))
+    logo = Image.merge("RGBA", (r, g, b, a))
 
     # Position
     x = (sw - lw) // 2
