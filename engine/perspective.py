@@ -32,8 +32,10 @@ smoother alpha edges:
 Thread safety
 -------------
 pyvips/libvips uses a GLib thread-pool internally; each ``mapim`` call is
-independent.  ``_COORD_CACHE`` is written at most once per key; Python's GIL
-serialises the check-and-insert, so no explicit lock is needed.
+independent.  ``_COORD_CACHE`` compound operations (check→move→return and
+insert→evict→return) are guarded by ``_COORD_CACHE_LOCK``; the expensive
+numpy coordinate computation runs outside the lock so concurrent threads
+can compute different cache entries in parallel.
 
 PyInstaller bundling note
 -------------------------
@@ -53,7 +55,7 @@ on each call (new_from_array is zero-copy so this is fast).
 from __future__ import annotations
 
 import logging
-import os
+import threading
 from collections import OrderedDict
 from functools import lru_cache
 
@@ -122,8 +124,9 @@ def get_backend_label(kernel: str) -> str:
 # Capped at _COORD_CACHE_MAX entries (~5.6 MB each for 700×1000 canvas) to bound
 # memory growth in long-lived server processes that render multiple profiles.
 # Storing numpy arrays (not pyvips Images) avoids a GLib/cffi segfault at shutdown.
-_COORD_CACHE_MAX = 16
+_COORD_CACHE_MAX  = 16
 _COORD_CACHE: OrderedDict[tuple, np.ndarray] = OrderedDict()
+_COORD_CACHE_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -203,24 +206,35 @@ def _get_coord_array(
     for each output pixel.
 
     Cache miss: ~50-60 ms for a 1000x1000 canvas (numpy mgrid).
-    Cache hit:  O(1) dict lookup, no allocation.
+    Cache hit:  O(1) dict lookup under lock.
+
+    Thread safety: _COORD_CACHE_LOCK guards all compound read-modify-write
+    sequences. The expensive numpy computation runs outside the lock so
+    concurrent threads can compute different entries in parallel.
     """
     key = (canvas_w, canvas_h, coeffs)
-    if key in _COORD_CACHE:
-        _COORD_CACHE.move_to_end(key)   # mark as recently used
-        return _COORD_CACHE[key]
 
+    with _COORD_CACHE_LOCK:
+        if key in _COORD_CACHE:
+            _COORD_CACHE.move_to_end(key)
+            return _COORD_CACHE[key]
+
+    # Compute outside the lock — pure numpy, no shared state.
     a0, a1, a2, a3, a4, a5, a6, a7 = coeffs
     ys, xs = np.mgrid[0:canvas_h, 0:canvas_w].astype(np.float32)
     denom  = a6 * xs + a7 * ys + 1.0
     src_x  = (a0 * xs + a1 * ys + a2) / denom
     src_y  = (a3 * xs + a4 * ys + a5) / denom
-    _COORD_CACHE[key] = np.stack([src_x, src_y], axis=2)  # (H, W, 2) float32
+    arr    = np.stack([src_x, src_y], axis=2)  # (H, W, 2) float32
 
-    if len(_COORD_CACHE) > _COORD_CACHE_MAX:
-        _COORD_CACHE.popitem(last=False)  # evict least recently used
-
-    return _COORD_CACHE[key]
+    with _COORD_CACHE_LOCK:
+        # Another thread may have computed the same key while we were
+        # computing; prefer their entry (already in the cache) over ours.
+        if key not in _COORD_CACHE:
+            _COORD_CACHE[key] = arr
+            if len(_COORD_CACHE) > _COORD_CACHE_MAX:
+                _COORD_CACHE.popitem(last=False)
+        return _COORD_CACHE[key]
 
 
 def _warp_pyvips(
