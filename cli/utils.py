@@ -36,5 +36,5 @@ def parse_rgb_str(rgb_str: str) -> str | None:
             if not (0.0 <= val <= 5.0):
                 raise ValueError(f"channel {label} must be in [0.0, 5.0]")
         return f"{r} 0 0  0 {g} 0  0 0 {b}"
-    except Exception:
+    except ValueError:
         return None
