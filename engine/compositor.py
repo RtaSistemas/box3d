@@ -11,6 +11,7 @@ concentrated in ``core/pipeline.py``.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from PIL import Image, ImageFilter
@@ -177,7 +178,6 @@ def _sharpen_rgb(img: Image.Image) -> Image.Image:
 
 def _effective_geometry(profile: Profile, options: RenderOptions):
     """Return a geometry object with any CLI overrides applied."""
-    import dataclasses
     geom = profile.geometry
     overrides = {}
     if options.cover_fit    is not None: overrides["cover_fit"]    = options.cover_fit
@@ -187,7 +187,6 @@ def _effective_geometry(profile: Profile, options: RenderOptions):
 
 def _effective_layout(profile: Profile, options: RenderOptions):
     """Return a layout object with any CLI overrides applied."""
-    import dataclasses
     layout = profile.layout
     if options.no_rotate:
         layout = dataclasses.replace(
