@@ -103,6 +103,7 @@ def alpha_weighted_screen(dst: Image.Image, src: Image.Image) -> Image.Image:
     subsequent dst_in clip or the template overlay disappears entirely.
     See ADR-004 for the full rationale.
     """
+    assert dst.mode == "RGBA", f"dst must be RGBA, got {dst.mode!r}"
     dst_arr = np.array(dst, dtype=np.uint8)
     src_arr = np.array(src.convert("RGBA"), dtype=np.uint8)
 
@@ -145,6 +146,7 @@ def linear_alpha_composite(dst: Image.Image, src: Image.Image) -> Image.Image:
         out_a   = src_a + dst_a × (1 − src_a)
         out_lin = (src_lin × src_a + dst_lin × dst_a × (1 − src_a)) / out_a
     """
+    assert dst.mode == "RGBA", f"dst must be RGBA, got {dst.mode!r}"
     dst_arr = np.array(dst, dtype=np.uint8)
     src_arr = np.array(src.convert("RGBA"), dtype=np.uint8)
 
