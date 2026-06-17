@@ -521,8 +521,8 @@ class ControlTab:
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
             self._tmpl_img_lbl.configure(image=ctk_img)
             self._tmpl_img_lbl._ctk_image = ctk_img
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("Template thumbnail failed for %s: %s", path, exc)
 
     # =========================================================================
     # RGB tint helpers
