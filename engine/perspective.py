@@ -25,8 +25,8 @@ smoother alpha edges:
   interpolator with ``extend=BACKGROUND`` for transparent out-of-bounds
   regions.  lbb produces a smooth anti-aliased alpha gradient at quad
   boundaries (256 unique alpha values) versus PIL's binary 0/255 edge.
-* The default warp kernel can be overridden at process start via the
-  ``BOX3D_WARP_BACKEND`` environment variable
+* The default warp kernel is ``lbb``; it can be overridden per-render
+  via the ``kernel=`` parameter on :func:`warp`
   (``lbb`` | ``nohalo`` | ``bicubic`` | ``bilinear``).
 
 Thread safety
@@ -77,7 +77,7 @@ except (ImportError, OSError, AttributeError) as exc:
     log.info("pyvips not available (%s: %s) — falling back to PIL BICUBIC warp",
              type(exc).__name__, exc)
 
-# Warp kernel used by the pyvips path.
+# Warp kernel used by the pyvips path when no kernel is supplied by the caller.
 # Supported values: 'lbb' | 'nohalo' | 'bicubic' | 'bilinear'
 #   lbb    — locally bounded bicubic; smooth anti-aliased alpha at quad
 #             boundaries (256 unique values); fast (default)
@@ -86,16 +86,10 @@ except (ImportError, OSError, AttributeError) as exc:
 #   bicubic — standard bicubic with extend=BACKGROUND; 73 unique alpha
 #             values; requires feathering for smooth edges
 #   bilinear — bilinear; fastest but lowest quality
-# Override via BOX3D_WARP_BACKEND environment variable before process start.
 _VALID_VIPS_KERNELS = frozenset({"lbb", "nohalo", "bicubic", "bilinear"})
-_VIPS_KERNEL: str = os.environ.get("BOX3D_WARP_BACKEND", "lbb")
-if _VIPS_KERNEL not in _VALID_VIPS_KERNELS:
-    raise ValueError(
-        f"BOX3D_WARP_BACKEND={_VIPS_KERNEL!r} is not a valid pyvips kernel. "
-        f"Valid values: {sorted(_VALID_VIPS_KERNELS)}"
-    )
+_VIPS_KERNEL: str = "lbb"  # process-wide default; overridden per-call via kernel= param
 
-# Human-readable backend label for the process-default kernel (env var / diagnostics).
+# Human-readable backend label for diagnostics.
 if _PYVIPS_AVAILABLE:
     WARP_BACKEND_LABEL: str = (
         f"pyvips {_pyvips.__version__} — kernel={_VIPS_KERNEL} "  # type: ignore[union-attr]
